@@ -95,9 +95,10 @@ const FileProcessor: React.FC = () => {
       try {
         updateFile(file.id, { status: 'processing', progress: 0 });
 
-        const endpoint = file.type === 'document' || file.type === 'spreadsheet' 
-          ? '/conversion'
-          : '/compression';
+        // Determine endpoint based on file type and desired format
+        const isConversion = (file.type === 'document' || file.type === 'spreadsheet') ||
+          (file.type === 'image' && file.options.format === 'pdf');
+        const endpoint = isConversion ? '/conversion' : '/compression';
 
         const response = await fetch(`${API_BASE_URL}${endpoint}/${file.id}`, {
           method: 'POST',
@@ -145,9 +146,10 @@ const FileProcessor: React.FC = () => {
       const file = files.find(f => f.id === fileId);
       if (!file) return;
 
-      const endpoint = file.type === 'document' || file.type === 'spreadsheet'
-        ? '/conversion/download'
-        : '/compression/download';
+      // Determine download endpoint based on file type and format
+      const isConversion = (file.type === 'document' || file.type === 'spreadsheet') ||
+        (file.type === 'image' && file.options.format === 'pdf');
+      const endpoint = isConversion ? '/conversion/download' : '/compression/download';
 
       const response = await fetch(`${API_BASE_URL}${endpoint}/${processedId}`);
       
