@@ -51,6 +51,30 @@ const convertImage = async (filePath, format) => {
   }
 };
 
+// Convert image to PDF
+const convertImageToPDF = async (filePath) => {
+  const outputPath = path.join(
+    path.dirname(filePath),
+    `${path.basename(filePath, path.extname(filePath))}.pdf`
+  );
+  
+  try {
+    // Use ImageMagick to convert image to PDF
+    const cmd = `convert "${filePath}" "${outputPath}"`;
+    await execPromise(cmd);
+    
+    // Check if the output file exists
+    if (!fs.existsSync(outputPath)) {
+      throw new Error('Conversion failed: Output file not found');
+    }
+    
+    return outputPath;
+  } catch (error) {
+    logger.error('Image to PDF conversion failed', error);
+    throw new AppError('Image to PDF conversion failed', 500);
+  }
+};
+
 // Convert video to another format
 const convertVideo = async (filePath, format) => {
   const outputPath = path.join(
@@ -98,10 +122,15 @@ router.post('/:id', async (req, res, next) => {
       outputPath = await convertOfficeToPDF(filePath);
     } else if (['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(fileExt)) {
       // Image conversion
-      if (!['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(format.toLowerCase())) {
+      if (format.toLowerCase() === 'pdf') {
+        // Convert image to PDF
+        outputPath = await convertImageToPDF(filePath);
+      } else if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(format.toLowerCase())) {
+        // Convert image to another image format
+        outputPath = await convertImage(filePath, format.toLowerCase());
+      } else {
         throw new AppError('Unsupported image format', 400);
       }
-      outputPath = await convertImage(filePath, format.toLowerCase());
     } else if (['.mp4', '.webm', '.mov', '.avi'].includes(fileExt)) {
       // Video conversion
       if (!['mp4', 'webm', 'mov', 'avi'].includes(format.toLowerCase())) {
