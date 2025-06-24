@@ -125,3 +125,4 @@ npm run build
 - No test framework is configured - tests need to be set up if required
 - Frontend port is 3050 in Docker, 5173 in development
 - Temporary files are automatically cleaned up after processing
+- This project is ran in docker compose! no need to run npm locally!
