@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer } from 'react';
+import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
 
@@ -9,10 +9,11 @@ interface Toast {
   type: ToastType;
   title: string;
   description?: string;
+  duration?: number;
 }
 
 type ToastAction =
-  | { type: 'ADD_TOAST'; toast: Omit<Toast, 'id'> }
+  | { type: 'ADD_TOAST'; toast: Toast }
   | { type: 'REMOVE_TOAST'; id: string };
 
 interface ToastContextType {
@@ -26,7 +27,7 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 function toastReducer(state: Toast[], action: ToastAction): Toast[] {
   switch (action.type) {
     case 'ADD_TOAST':
-      return [...state, { ...action.toast, id: Date.now().toString() }];
+      return [...state, action.toast];
     case 'REMOVE_TOAST':
       return state.filter((toast) => toast.id !== action.id);
     default:
@@ -38,7 +39,15 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, dispatch] = useReducer(toastReducer, []);
 
   const addToast = (toast: Omit<Toast, 'id'>) => {
-    dispatch({ type: 'ADD_TOAST', toast });
+    const id = Date.now().toString();
+    const duration = toast.duration || 5000; // Default 5 seconds
+    
+    dispatch({ type: 'ADD_TOAST', toast: { ...toast, id, duration } });
+    
+    // Auto-remove after duration
+    setTimeout(() => {
+      removeToast(id);
+    }, duration);
   };
 
   const removeToast = (id: string) => {

@@ -12,8 +12,9 @@ const storage = multer.diskStorage({
     cb(null, path.join(__dirname, '../temp'));
   },
   filename: (req, file, cb) => {
-    // Generate unique filename
-    const uniqueFilename = `${uuidv4()}-${file.originalname}`;
+    // Generate unique filename with extension only to avoid encoding issues
+    const ext = path.extname(file.originalname);
+    const uniqueFilename = `${uuidv4()}${ext}`;
     cb(null, uniqueFilename);
   }
 });

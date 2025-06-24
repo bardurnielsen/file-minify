@@ -19,12 +19,21 @@ const convertOfficeToPDF = async (filePath) => {
   try {
     // Use LibreOffice for conversion
     const cmd = `libreoffice --headless --convert-to pdf --outdir "${path.dirname(filePath)}" "${filePath}"`;
-    await execPromise(cmd);
+    
+    logger.info(`Executing conversion command: ${cmd}`);
+    const { stdout, stderr } = await execPromise(cmd);
+    
+    if (stdout) logger.info(`LibreOffice stdout: ${stdout}`);
+    if (stderr) logger.warn(`LibreOffice stderr: ${stderr}`);
     
     // Check if the output file exists
     if (!fs.existsSync(outputPath)) {
       throw new Error('Conversion failed: Output file not found');
     }
+    
+    // Log file details
+    const stats = fs.statSync(outputPath);
+    logger.info(`Conversion successful: ${outputPath}, Size: ${stats.size} bytes`);
     
     return outputPath;
   } catch (error) {
@@ -43,7 +52,28 @@ const convertImage = async (filePath, format) => {
   try {
     // Use Sharp for image conversion
     const sharp = require('sharp');
-    await sharp(filePath)[format]().toFile(outputPath);
+    let sharpInstance = sharp(filePath);
+    
+    // Use the correct Sharp format methods
+    switch (format.toLowerCase()) {
+      case 'jpg':
+      case 'jpeg':
+        sharpInstance = sharpInstance.jpeg();
+        break;
+      case 'png':
+        sharpInstance = sharpInstance.png();
+        break;
+      case 'webp':
+        sharpInstance = sharpInstance.webp();
+        break;
+      case 'gif':
+        sharpInstance = sharpInstance.gif();
+        break;
+      default:
+        throw new Error(`Unsupported format: ${format}`);
+    }
+    
+    await sharpInstance.toFile(outputPath);
     return outputPath;
   } catch (error) {
     logger.error('Image conversion failed', error);
@@ -93,17 +123,52 @@ const convertVideo = async (filePath, format) => {
   }
 };
 
+// Convert PDF to image
+const convertPDFToImage = async (filePath, format) => {
+  const outputPath = path.join(
+    path.dirname(filePath),
+    `${path.basename(filePath, path.extname(filePath))}.${format}`
+  );
+  
+  try {
+    // Use ImageMagick to convert PDF to image (first page only)
+    const cmd = `convert "${filePath}[0]" "${outputPath}"`;
+    await execPromise(cmd);
+    
+    // Check if the output file exists
+    if (!fs.existsSync(outputPath)) {
+      throw new Error('Conversion failed: Output file not found');
+    }
+    
+    return outputPath;
+  } catch (error) {
+    logger.error('PDF to image conversion failed', error);
+    throw new AppError('PDF to image conversion failed', 500);
+  }
+};
+
 // Conversion route - convert file to specified format
 router.post('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { format } = req.body;
+    let { format } = req.body;
     
-    if (!format) {
-      throw new AppError('Format is required', 400);
+    // If body contains options object, extract format from it
+    if (req.body.options && req.body.options.format) {
+      format = req.body.options.format;
     }
     
+    // Default to PDF for office documents if format is 'original' or not specified
     const filePath = path.join(__dirname, '../temp', id);
+    const fileExt = path.extname(filePath).toLowerCase();
+    const isOfficeDoc = ['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt'].includes(fileExt);
+    if (isOfficeDoc && (!format || format === 'original')) {
+      format = 'pdf';
+    }
+    
+    if (!format || format === 'original') {
+      throw new AppError('Format is required for conversion', 400);
+    }
     
     // Check if file exists
     if (!fs.existsSync(filePath)) {
@@ -111,8 +176,10 @@ router.post('/:id', async (req, res, next) => {
     }
     
     // Determine file type and apply appropriate conversion
-    const fileExt = path.extname(filePath).toLowerCase();
     let outputPath;
+    
+    // Log the conversion request for debugging
+    logger.info(`Converting file: ${id}, Extension: ${fileExt}, Format: ${format}`);
     
     if (['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt'].includes(fileExt)) {
       // Office to PDF conversion
@@ -137,6 +204,14 @@ router.post('/:id', async (req, res, next) => {
         throw new AppError('Unsupported video format', 400);
       }
       outputPath = await convertVideo(filePath, format.toLowerCase());
+    } else if (fileExt === '.pdf') {
+      // PDF conversion
+      if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(format.toLowerCase())) {
+        // Convert PDF to image
+        outputPath = await convertPDFToImage(filePath, format.toLowerCase());
+      } else {
+        throw new AppError('PDFs can only be converted to image formats (JPG, PNG, WebP, GIF)', 400);
+      }
     } else {
       throw new AppError('Unsupported file type for conversion', 400);
     }

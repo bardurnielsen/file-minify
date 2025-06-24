@@ -4,13 +4,17 @@ FileMinify is a modern web application that allows users to compress PDF files, 
 
 ## Features
 
-- Compress PDFs, videos, and images with customizable settings
-- Convert Word and Excel files to PDF format
-- Drag-and-drop file upload interface
-- Multiple file processing at once
-- Responsive design for all devices
-- Format conversion options with quality/size tradeoffs
-- Secure file handling with automatic cleanup
+- **PDF Compression**: Reduce PDF file sizes while maintaining quality
+- **Image Optimization**: Compress JPEG, PNG, WebP images and convert between formats
+- **Video Compression**: Shrink MP4, WebM, MOV, and AVI files for easier sharing
+- **Document Conversion**: Convert Word, Excel, and PowerPoint files to PDF
+- **Image to PDF**: Convert images directly to PDF format
+- **Batch Processing**: Process multiple files at once with customizable settings
+- **Format Conversion**: Convert between image formats (JPG, PNG, WebP)
+- **Drag-and-Drop Interface**: Easy file upload with visual feedback
+- **Quality Control**: Adjustable compression settings for each file
+- **Secure & Private**: Files automatically deleted after 1 hour
+- **No Registration**: Completely free, no signup required
 
 ## Tech Stack
 
@@ -55,7 +59,7 @@ cd fileminify
 docker-compose up -d
 ```
 
-3. Access the application at http://localhost:3000
+3. Access the application at http://localhost:3050
 
 ## Development
 

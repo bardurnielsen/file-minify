@@ -22,6 +22,9 @@ const FileProcessor: React.FC = () => {
 
   const handleFilesAccepted = async (acceptedFiles: File[]) => {
     try {
+      // Clear existing files when starting a new upload
+      clearFiles();
+      
       const formData = new FormData();
       acceptedFiles.forEach(file => {
         formData.append('files', file);
@@ -43,7 +46,7 @@ const FileProcessor: React.FC = () => {
         throw new Error('Invalid response format from server');
       }
       
-      const newFiles = data.data.map((fileData: any) => {
+      const newFiles = data.data.map((fileData: any, index: number) => {
         let type: FileType = 'other';
         if (fileData.mimetype.includes('image')) type = 'image';
         else if (fileData.mimetype.includes('video')) type = 'video';
@@ -51,9 +54,10 @@ const FileProcessor: React.FC = () => {
         else if (fileData.mimetype.includes('word')) type = 'document';
         else if (fileData.mimetype.includes('excel')) type = 'spreadsheet';
 
-        const originalFile = acceptedFiles.find(f => f.name === fileData.originalName);
+        // Match by index since files are uploaded in the same order
+        const originalFile = acceptedFiles[index];
         if (!originalFile) {
-          throw new Error(`Original file not found for ${fileData.originalName}`);
+          throw new Error(`Original file not found at index ${index}`);
         }
 
         return {
@@ -76,6 +80,7 @@ const FileProcessor: React.FC = () => {
           type: 'success',
           title: 'Files uploaded successfully',
           description: `${newFiles.length} files ready for processing`,
+          duration: 3000, // 3 seconds for success messages
         });
       }
     } catch (error) {
@@ -84,6 +89,7 @@ const FileProcessor: React.FC = () => {
         type: 'error',
         title: 'Upload failed',
         description: error instanceof Error ? error.message : 'There was an error uploading your files',
+        duration: 7000, // 7 seconds for error messages
       });
     }
   };
@@ -97,7 +103,9 @@ const FileProcessor: React.FC = () => {
 
         // Determine endpoint based on file type and desired format
         const isConversion = (file.type === 'document' || file.type === 'spreadsheet') ||
-          (file.type === 'image' && file.options.format === 'pdf');
+          (file.type === 'image' && file.options.format === 'pdf') ||
+          (file.type === 'pdf' && ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(file.options.format)) ||
+          (file.type === 'image' && ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(file.options.format) && file.options.format !== 'original');
         const endpoint = isConversion ? '/conversion' : '/compression';
 
         const response = await fetch(`${API_BASE_URL}${endpoint}/${file.id}`, {
@@ -105,7 +113,11 @@ const FileProcessor: React.FC = () => {
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(file.options),
+          body: JSON.stringify({ 
+            format: file.options.format,
+            quality: file.options.quality,
+            maxSize: file.options.maxSize 
+          }),
         });
 
         if (!response.ok) {
@@ -126,6 +138,7 @@ const FileProcessor: React.FC = () => {
           type: 'success',
           title: 'File processed successfully',
           description: `${file.name} has been processed and is ready for download`,
+          duration: 4000, // 4 seconds for processing success
         });
       } catch (error) {
         console.error('Processing error:', error);
@@ -134,6 +147,7 @@ const FileProcessor: React.FC = () => {
           type: 'error',
           title: 'Processing failed',
           description: error instanceof Error ? error.message : `Failed to process ${file.name}`,
+          duration: 7000, // 7 seconds for processing errors
         });
       }
     }
@@ -148,7 +162,9 @@ const FileProcessor: React.FC = () => {
 
       // Determine download endpoint based on file type and format
       const isConversion = (file.type === 'document' || file.type === 'spreadsheet') ||
-        (file.type === 'image' && file.options.format === 'pdf');
+        (file.type === 'image' && file.options.format === 'pdf') ||
+        (file.type === 'pdf' && ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(file.options.format)) ||
+        (file.type === 'image' && ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(file.options.format) && file.options.format !== 'original');
       const endpoint = isConversion ? '/conversion/download' : '/compression/download';
 
       const response = await fetch(`${API_BASE_URL}${endpoint}/${processedId}`);
@@ -162,7 +178,20 @@ const FileProcessor: React.FC = () => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `processed-${file.name}`;
+      
+      // Determine the correct filename with appropriate extension
+      let downloadName = file.name;
+      if (isConversion) {
+        // For conversions, replace the extension with the target format
+        const nameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+        const targetFormat = file.options.format || 'pdf';
+        downloadName = `${nameWithoutExt}.${targetFormat}`;
+      } else {
+        // For compressions, keep the original extension
+        downloadName = `compressed-${file.name}`;
+      }
+      
+      a.download = downloadName;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -172,6 +201,7 @@ const FileProcessor: React.FC = () => {
         type: 'success',
         title: 'Download started',
         description: `${file.name} is being downloaded`,
+        duration: 3000, // 3 seconds for download notifications
       });
     } catch (error) {
       console.error('Download error:', error);
@@ -179,6 +209,7 @@ const FileProcessor: React.FC = () => {
         type: 'error',
         title: 'Download failed',
         description: error instanceof Error ? error.message : 'There was an error downloading your file',
+        duration: 7000, // 7 seconds for download errors
       });
     }
   };
@@ -245,6 +276,10 @@ const FileProcessor: React.FC = () => {
                   const newFiles = files.filter(file => file.status !== 'completed');
                   clearFiles();
                   addFiles(newFiles);
+                }}
+                onClearAll={() => {
+                  clearFiles();
+                  setActiveTab('upload');
                 }}
               />
             </TabsContent>

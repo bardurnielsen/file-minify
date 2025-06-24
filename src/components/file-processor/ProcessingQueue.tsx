@@ -9,13 +9,15 @@ interface ProcessingQueueProps {
   onRemoveFile: (id: string) => void;
   onDownload: (fileId: string, processedId: string) => void;
   onClearCompleted: () => void;
+  onClearAll: () => void;
 }
 
 const ProcessingQueue: React.FC<ProcessingQueueProps> = ({ 
   files, 
   onRemoveFile,
   onDownload,
-  onClearCompleted
+  onClearCompleted,
+  onClearAll
 }) => {
   const completedFiles = files.filter(file => file.status === 'completed');
   const processingFiles = files.filter(file => file.status === 'processing');
@@ -26,6 +28,34 @@ const ProcessingQueue: React.FC<ProcessingQueueProps> = ({
     else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
     else if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(2) + ' MB';
     else return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+  };
+
+  const getDisplayFilename = (file: FileItem) => {
+    // If file is completed and format is different from original, show converted filename
+    if (file.status === 'completed' && file.options.format !== 'original') {
+      const isOfficeToDocument = (file.type === 'document' || file.type === 'spreadsheet');
+      const isImageToPdf = (file.type === 'image' && file.options.format === 'pdf');
+      const isImageToImage = (file.type === 'image' && 
+        ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(file.options.format.toLowerCase()));
+      const isPdfToImage = (file.type === 'pdf' && 
+        ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(file.options.format.toLowerCase()));
+      
+      if (isOfficeToDocument || isImageToPdf || isImageToImage || isPdfToImage) {
+        // For conversions, replace the extension with the target format
+        const nameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+        let targetFormat = file.options.format;
+        
+        // Handle special cases
+        if (isOfficeToDocument && file.options.format !== 'pdf') {
+          targetFormat = 'pdf'; // Office documents always convert to PDF
+        }
+        
+        return `${nameWithoutExt}.${targetFormat}`;
+      }
+    }
+    
+    // For compressions or when format is 'original', keep original name
+    return file.name;
   };
 
   const renderStatusIcon = (status: string) => {
@@ -47,14 +77,24 @@ const ProcessingQueue: React.FC<ProcessingQueueProps> = ({
         <h3 className="font-medium text-lg text-slate-800 dark:text-slate-200">
           Processing Queue
         </h3>
-        {completedFiles.length > 0 && (
-          <button
-            onClick={onClearCompleted}
-            className="text-sm text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
-          >
-            Clear completed
-          </button>
-        )}
+        <div className="flex space-x-4">
+          {completedFiles.length > 0 && (
+            <button
+              onClick={onClearCompleted}
+              className="text-sm text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+            >
+              Clear completed
+            </button>
+          )}
+          {files.length > 0 && (
+            <button
+              onClick={onClearAll}
+              className="text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="space-y-6">
@@ -77,7 +117,7 @@ const ProcessingQueue: React.FC<ProcessingQueueProps> = ({
                       {renderStatusIcon(file.status)}
                     </div>
                     <div className="flex-1">
-                      <p className="font-medium text-slate-800 dark:text-slate-200">{file.name}</p>
+                      <p className="font-medium text-slate-800 dark:text-slate-200">{getDisplayFilename(file)}</p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
                         {formatFileSize(file.size)} • {file.options.format.toUpperCase()}
                       </p>
@@ -121,7 +161,7 @@ const ProcessingQueue: React.FC<ProcessingQueueProps> = ({
                         {renderStatusIcon(file.status)}
                       </div>
                       <div className="flex-1">
-                        <p className="font-medium text-slate-800 dark:text-slate-200">{file.name}</p>
+                        <p className="font-medium text-slate-800 dark:text-slate-200">{getDisplayFilename(file)}</p>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
                           {formatFileSize(file.size)} → {formatFileSize(file.compressedSize || file.size)} 
                           {file.compressedSize && ` (${savingsPercent}% smaller)`}
@@ -184,7 +224,7 @@ const ProcessingQueue: React.FC<ProcessingQueueProps> = ({
                       {renderStatusIcon(file.status)}
                     </div>
                     <div className="flex-1">
-                      <p className="font-medium text-slate-800 dark:text-slate-200">{file.name}</p>
+                      <p className="font-medium text-slate-800 dark:text-slate-200">{getDisplayFilename(file)}</p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
                         {formatFileSize(file.size)} • Waiting to process
                       </p>
