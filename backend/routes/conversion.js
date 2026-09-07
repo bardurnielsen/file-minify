@@ -112,9 +112,14 @@ const convertVideo = async (filePath, format) => {
     `${path.basename(filePath, path.extname(filePath))}.${format}`
   );
   
+  if (path.resolve(outputPath) === path.resolve(filePath)) {
+    throw new AppError(`File is already in ${format} format`, 400);
+  }
+  
   try {
-    // Use FFmpeg for video conversion
-    const cmd = `ffmpeg -i "${filePath}" "${outputPath}"`;
+    // -y is required: without it FFmpeg prompts before overwriting an existing
+    // output and blocks forever, since exec() gives it no stdin to answer from.
+    const cmd = `ffmpeg -y -i "${filePath}" "${outputPath}"`;
     await execPromise(cmd);
     return outputPath;
   } catch (error) {

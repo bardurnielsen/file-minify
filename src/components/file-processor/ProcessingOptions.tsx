@@ -4,6 +4,7 @@ import { FileItem, ProcessingOption } from '../../types';
 import { motion } from 'framer-motion';
 import OptionSlider from './OptionSlider';
 import FormatSelector from './FormatSelector';
+import { commonFormatsFor, formatsFor, KEEP_ORIGINAL } from '../../formats';
 
 interface ProcessingOptionsProps {
   files: FileItem[];
@@ -21,6 +22,13 @@ const ProcessingOptions: React.FC<ProcessingOptionsProps> = ({
   onProcess,
 }) => {
   const [applyToAll, setApplyToAll] = useState(true);
+
+  // A global choice is applied to every file, so only offer formats that are
+  // valid for all of them; a mixed selection may leave nothing but the default.
+  const globalFormats = commonFormatsFor(files);
+  const globalFormat = globalFormats.some((o) => o.value === globalOptions.format)
+    ? globalOptions.format
+    : KEEP_ORIGINAL.value;
 
   return (
     <div className="space-y-6">
@@ -58,7 +66,8 @@ const ProcessingOptions: React.FC<ProcessingOptionsProps> = ({
                   Output Format
                 </label>
                 <FormatSelector 
-                  value={globalOptions.format}
+                  value={globalFormat}
+                  options={globalFormats}
                   onChange={(value) => onGlobalOptionChange({ format: value })}
                 />
               </div>
@@ -144,6 +153,7 @@ const ProcessingOptions: React.FC<ProcessingOptionsProps> = ({
                     </label>
                     <FormatSelector 
                       value={file.options.format}
+                      options={formatsFor(file.type, file.name)}
                       onChange={(value) => onOptionChange(file.id, { format: value })}
                       size="sm"
                     />
