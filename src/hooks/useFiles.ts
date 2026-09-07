@@ -1,16 +1,21 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { FileItem, Tier } from '../types';
+import { FileItem, MergeState, Tier } from '../types';
+
+const EMPTY_MERGE: MergeState = { status: 'idle', order: [], excluded: [], name: 'merged.pdf' };
 
 interface FileStore {
   files: FileItem[];
   /** Tier applied to newly dropped files; remembered across visits. */
   defaultTier: Tier;
+  merge: MergeState;
   setDefaultTier: (tier: Tier) => void;
   addFiles: (newFiles: FileItem[]) => void;
   removeFile: (id: string) => void;
   updateFile: (id: string, updates: Partial<FileItem> | ((file: FileItem) => Partial<FileItem>)) => void;
   clearFiles: () => void;
+  setMerge: (updates: Partial<MergeState> | ((merge: MergeState) => Partial<MergeState>)) => void;
+  resetMerge: () => void;
 }
 
 export const useFiles = create<FileStore>()(
@@ -18,16 +23,30 @@ export const useFiles = create<FileStore>()(
     (set) => ({
       files: [],
       defaultTier: 'balanced',
+      merge: EMPTY_MERGE,
       setDefaultTier: (defaultTier) => set({ defaultTier }),
       addFiles: (newFiles) => set((state) => ({ files: [...state.files, ...newFiles] })),
-      removeFile: (id) => set((state) => ({ files: state.files.filter((f) => f.id !== id) })),
+      removeFile: (id) =>
+        set((state) => ({
+          files: state.files.filter((f) => f.id !== id),
+          merge: {
+            ...state.merge,
+            order: state.merge.order.filter((x) => x !== id),
+            excluded: state.merge.excluded.filter((x) => x !== id),
+          },
+        })),
       updateFile: (id, updates) =>
         set((state) => ({
           files: state.files.map((f) =>
             f.id === id ? { ...f, ...(typeof updates === 'function' ? updates(f) : updates) } : f
           ),
         })),
-      clearFiles: () => set({ files: [] }),
+      clearFiles: () => set({ files: [], merge: EMPTY_MERGE }),
+      setMerge: (updates) =>
+        set((state) => ({
+          merge: { ...state.merge, ...(typeof updates === 'function' ? updates(state.merge) : updates) },
+        })),
+      resetMerge: () => set({ merge: EMPTY_MERGE }),
     }),
     {
       name: 'fileminify-prefs',

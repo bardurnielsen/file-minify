@@ -5,42 +5,10 @@ const { exec } = require('child_process');
 const { promisify } = require('util');
 const { AppError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
+const { convertOfficeToPDF, convertImageToPDF } = require('../utils/converters');
 
 const router = express.Router();
 const execPromise = promisify(exec);
-
-// Convert Office documents to PDF
-const convertOfficeToPDF = async (filePath) => {
-  const outputPath = path.join(
-    path.dirname(filePath),
-    `${path.basename(filePath, path.extname(filePath))}.pdf`
-  );
-  
-  try {
-    // Use LibreOffice for conversion
-    const cmd = `libreoffice --headless --convert-to pdf --outdir "${path.dirname(filePath)}" "${filePath}"`;
-    
-    logger.info(`Executing conversion command: ${cmd}`);
-    const { stdout, stderr } = await execPromise(cmd);
-    
-    if (stdout) logger.info(`LibreOffice stdout: ${stdout}`);
-    if (stderr) logger.warn(`LibreOffice stderr: ${stderr}`);
-    
-    // Check if the output file exists
-    if (!fs.existsSync(outputPath)) {
-      throw new Error('Conversion failed: Output file not found');
-    }
-    
-    // Log file details
-    const stats = fs.statSync(outputPath);
-    logger.info(`Conversion successful: ${outputPath}, Size: ${stats.size} bytes`);
-    
-    return outputPath;
-  } catch (error) {
-    logger.error('Office to PDF conversion failed', error);
-    throw new AppError('Office to PDF conversion failed', 500);
-  }
-};
 
 // Convert image to another format
 const convertImage = async (filePath, format) => {
@@ -78,30 +46,6 @@ const convertImage = async (filePath, format) => {
   } catch (error) {
     logger.error('Image conversion failed', error);
     throw new AppError('Image conversion failed', 500);
-  }
-};
-
-// Convert image to PDF
-const convertImageToPDF = async (filePath) => {
-  const outputPath = path.join(
-    path.dirname(filePath),
-    `${path.basename(filePath, path.extname(filePath))}.pdf`
-  );
-  
-  try {
-    // Use ImageMagick to convert image to PDF
-    const cmd = `convert "${filePath}" "${outputPath}"`;
-    await execPromise(cmd);
-    
-    // Check if the output file exists
-    if (!fs.existsSync(outputPath)) {
-      throw new Error('Conversion failed: Output file not found');
-    }
-    
-    return outputPath;
-  } catch (error) {
-    logger.error('Image to PDF conversion failed', error);
-    throw new AppError('Image to PDF conversion failed', 500);
   }
 };
 

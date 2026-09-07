@@ -1,4 +1,4 @@
-import { Route } from '../types';
+import { DownloadRoute, Route } from '../types';
 
 const API = '/api';
 
@@ -77,7 +77,7 @@ export const processFile = async (
   return json.data as ProcessResponse;
 };
 
-export const downloadBlob = async (route: Route, processedId: string) => {
+export const downloadBlob = async (route: DownloadRoute, processedId: string) => {
   const response = await fetch(`${API}/${route}/download/${processedId}`);
   if (!response.ok) {
     throw new Error(messageFrom(await response.text(), response.status, 'Download failed'));
@@ -87,3 +87,38 @@ export const downloadBlob = async (route: Route, processedId: string) => {
 
 export const deleteUpload = (serverId: string) =>
   fetch(`${API}/upload/${serverId}`, { method: 'DELETE' }).catch(() => undefined);
+
+export class MergeError extends Error {
+  failedId?: string;
+  constructor(message: string, failedId?: string) {
+    super(message);
+    this.failedId = failedId;
+  }
+}
+
+export interface MergeResponse {
+  id: string;
+  size: number;
+  pageCount: number;
+  fileCount: number;
+}
+
+/** POST /merge with an explicit, ordered list of temp-file ids. */
+export const mergeFiles = async (ids: string[]): Promise<MergeResponse> => {
+  const response = await fetch(`${API}/merge`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });
+  const raw = await response.text();
+  let json: { success?: boolean; error?: string; failedId?: string; data?: MergeResponse } = {};
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    /* not JSON */
+  }
+  if (!response.ok || !json.success || !json.data?.id) {
+    throw new MergeError(json.error || `Merge failed (${response.status})`, json.failedId);
+  }
+  return json.data;
+};

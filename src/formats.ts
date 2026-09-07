@@ -38,6 +38,10 @@ const TARGETS: Record<FileType, FormatOption[]> = {
 /** Every target a file type can become, regardless of source extension. */
 export const targetsFor = (type: FileType): FormatOption[] => TARGETS[type];
 
+/** Anything that is a PDF, or that the backend can turn into one, can be merged. */
+export const canBecomePdf = (type: FileType) =>
+  type === 'pdf' || TARGETS[type].some((option) => option.value === 'pdf');
+
 export const extensionOf = (fileName: string) =>
   fileName.includes('.') ? fileName.split('.').pop()!.toLowerCase() : '';
 

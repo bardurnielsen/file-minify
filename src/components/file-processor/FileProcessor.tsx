@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileRejection, useDropzone } from 'react-dropzone';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Download, RefreshCw, Trash2 } from 'lucide-react';
+import { Download, Layers, RefreshCw, Trash2 } from 'lucide-react';
 import { FileItem, ProcessingOption, Tier } from '../../types';
 import { KEEP_ORIGINAL } from '../../formats';
 import {
@@ -9,13 +9,16 @@ import {
   MAX_FILES_PER_DROP,
   MAX_FILE_BYTES,
   detectType,
+  isMergeReady,
+  isMergeable,
   isOffice,
   isStale,
+  mergeSourceId,
   outputNameFor,
   requestBodyFor,
   routeFor,
 } from '../../processing';
-import { deleteUpload, downloadBlob, processFile, uploadFile } from '../../lib/api';
+import { MergeError, deleteUpload, downloadBlob, mergeFiles, processFile, uploadFile } from '../../lib/api';
 import { formatBytes, percentChange, plural, uid, cn } from '../../lib/format';
 import { useFiles } from '../../hooks/useFiles';
 import { useToast } from '../ui/toaster';
@@ -23,6 +26,7 @@ import { Button } from '../ui/button';
 import { AddMoreStrip, DropHero } from './DropZone';
 import FileRow from './FileRow';
 import TierControl from './TierControl';
+import MergeDialog, { MergeRow, mergedFileName } from './MergeDialog';
 
 // Images and PDFs finish in well under a second; video can take minutes and
 // starves the box if too many run at once. Three keeps the queue moving.
@@ -74,6 +78,8 @@ const rejectionMessage = (r: FileRejection) => {
 const FileProcessor: React.FC = () => {
   const files = useFiles((s) => s.files);
   const defaultTier = useFiles((s) => s.defaultTier);
+  const merge = useFiles((s) => s.merge);
+  const [mergeOpen, setMergeOpen] = useState(false);
   const { addToast } = useToast();
   const limiter = useRef(createLimiter(CONCURRENCY)).current;
   const officeLimiter = useRef(createLimiter(OFFICE_CONCURRENCY)).current;
@@ -224,6 +230,58 @@ const FileProcessor: React.FC = () => {
     }
   };
 
+  const openMerge = () => {
+    // Bring in every mergeable file the user has not deliberately left out,
+    // keeping whatever order they already arranged.
+    const { files: current, merge: m, setMerge } = useFiles.getState();
+    const additions = current
+      .filter((f) => isMergeable(f) && !m.order.includes(f.id) && !m.excluded.includes(f.id))
+      .map((f) => f.id);
+    if (additions.length) setMerge({ order: [...m.order, ...additions] });
+    setMergeOpen(true);
+  };
+
+  const runMerge = async () => {
+    const { files: current, merge: m, setMerge } = useFiles.getState();
+    const byId = new Map(current.map((f) => [f.id, f]));
+    const sources = m.order.map((id) => byId.get(id)).filter((f): f is FileItem => !!f && isMergeReady(f));
+    if (sources.length < 2) return;
+    setMerge({ status: 'running', error: undefined, failedFileId: undefined, result: undefined });
+    try {
+      const data = await mergeFiles(sources.map((f) => mergeSourceId(f)!));
+      useFiles.getState().setMerge({
+        status: 'done',
+        result: { ...data, sourceIds: sources.map((f) => f.id) },
+      });
+    } catch (error) {
+      const failedFileId =
+        error instanceof MergeError && error.failedId
+          ? sources.find((f) => mergeSourceId(f) === error.failedId)?.id
+          : undefined;
+      useFiles.getState().setMerge({
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Merge failed.',
+        failedFileId,
+      });
+    }
+  };
+
+  const downloadMerged = async () => {
+    const m = useFiles.getState().merge;
+    if (!m.result) return;
+    try {
+      const blob = await downloadBlob('merge', m.result.id);
+      saveBlob(blob, mergedFileName(m.name));
+    } catch (error) {
+      addToast({
+        type: 'error',
+        title: 'Download failed',
+        description: error instanceof Error ? error.message : 'Please try again.',
+        duration: 6000,
+      });
+    }
+  };
+
   const setTierForAll = (tier: Tier) => {
     useFiles.getState().setDefaultTier(tier);
     useFiles.getState().files.forEach((f) => {
@@ -249,6 +307,7 @@ const FileProcessor: React.FC = () => {
       done: done.length,
       busy,
       stale: files.filter(isStale).length,
+      mergeable: files.filter(isMergeable).length,
       saved: before - after,
       pct: percentChange(before, after),
     };
@@ -293,8 +352,8 @@ const FileProcessor: React.FC = () => {
         ) : (
           <div className="p-3 sm:p-4">
             {/* Toolbar: what happened, and the one global control. */}
-            <div className="flex flex-col gap-3 px-1 pb-3 pt-1 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
+            <div className="flex flex-col gap-3 px-1 pb-3 pt-1 sm:flex-row sm:items-start sm:justify-between">
+              <div className="shrink-0 whitespace-nowrap">
                 <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
                   {summary.busy > 0
                     ? `Working on ${plural(summary.busy, 'file')}…`
@@ -311,7 +370,7 @@ const FileProcessor: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                 <TierControl id="toolbar" size="sm" value={toolbarTier} onChange={setTierForAll} />
                 <AnimatePresence initial={false}>
                   {summary.stale > 0 && (
@@ -332,6 +391,12 @@ const FileProcessor: React.FC = () => {
                     </motion.div>
                   )}
                 </AnimatePresence>
+                {summary.mergeable >= 2 && (
+                  <Button variant="secondary" size="sm" onClick={openMerge}>
+                    <Layers className="h-3.5 w-3.5" />
+                    Merge to PDF
+                  </Button>
+                )}
                 {summary.done >= 2 && summary.busy === 0 && (
                   <Button variant="secondary" size="sm" onClick={downloadAll}>
                     <Download className="h-3.5 w-3.5" />
@@ -344,6 +409,17 @@ const FileProcessor: React.FC = () => {
                 </Button>
               </div>
             </div>
+
+            {merge.status !== 'idle' && (
+              <div className="mb-2">
+                <MergeRow
+                  merge={merge}
+                  onEdit={() => setMergeOpen(true)}
+                  onDownload={downloadMerged}
+                  onDismiss={() => useFiles.getState().resetMerge()}
+                />
+              </div>
+            )}
 
             <ul className="space-y-2">
               <AnimatePresence initial={false}>
@@ -386,6 +462,16 @@ const FileProcessor: React.FC = () => {
           </div>
         )}
       </motion.section>
+
+      <MergeDialog
+        open={mergeOpen}
+        onOpenChange={setMergeOpen}
+        files={files}
+        merge={merge}
+        onChange={(updates) => useFiles.getState().setMerge(updates)}
+        onRun={runMerge}
+        onDownload={downloadMerged}
+      />
 
       {!hasFiles && (
         <p className="text-center text-xs text-zinc-400 dark:text-zinc-500">

@@ -1,4 +1,4 @@
-import { extensionOf, KEEP_ORIGINAL } from './formats';
+import { canBecomePdf, extensionOf, KEEP_ORIGINAL } from './formats';
 import { FileItem, FileType, ProcessingOption, Route, Tier } from './types';
 
 export const MAX_FILE_BYTES = 50 * 1024 * 1024;
@@ -137,3 +137,19 @@ export const ACCEPT: Record<string, string[]> = {
   'application/vnd.ms-powerpoint': ['.ppt'],
   'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
 };
+
+/** Whether a file can take part in a PDF merge at all (video cannot). */
+export const isMergeable = (file: FileItem) => canBecomePdf(file.type);
+
+/**
+ * The temp-file id a merge should read: the processed output when there is
+ * one (so a converted .docx is not pushed through LibreOffice twice and a
+ * compressed PDF merges at its compressed size), otherwise the upload.
+ */
+export const mergeSourceId = (file: FileItem) => file.result?.processedId ?? file.serverId;
+
+/** Mergeable and already on the server. */
+export const isMergeReady = (file: FileItem) =>
+  isMergeable(file) && !!mergeSourceId(file) && file.status !== 'uploading';
+
+export const MAX_MERGE_SOURCES = 20;

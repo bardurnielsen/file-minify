@@ -15,6 +15,7 @@ dotenv.config();
 const uploadRoutes = require('./routes/upload');
 const compressionRoutes = require('./routes/compression');
 const conversionRoutes = require('./routes/conversion');
+const mergeRoutes = require('./routes/merge');
 
 // Import utilities
 const { errorHandler } = require('./middleware/errorHandler');
@@ -54,6 +55,7 @@ if (!fs.existsSync(tempDir)) {
 app.use('/upload', uploadRoutes);
 app.use('/compression', compressionRoutes);
 app.use('/conversion', conversionRoutes);
+app.use('/merge', mergeRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -89,9 +91,13 @@ setInterval(() => {
           return;
         }
         
-        // Remove files older than 1 hour
+        // Remove files older than 1 hour. Merge jobs use scratch directories;
+        // a crash mid-merge could leave one behind, so sweep those too.
         if (now - stats.mtimeMs > 3600000) {
-          fs.unlink(filePath, err => {
+          const remove = stats.isDirectory()
+            ? cb => fs.rm(filePath, { recursive: true, force: true }, cb)
+            : cb => fs.unlink(filePath, cb);
+          remove(err => {
             if (err) {
               logger.error(`Error deleting file ${file}`, err);
             } else {

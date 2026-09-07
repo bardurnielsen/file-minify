@@ -14,6 +14,8 @@ export type FileStatus = 'uploading' | 'queued' | 'processing' | 'done' | 'error
 export type Tier = 'small' | 'balanced' | 'high';
 
 export type Route = 'compression' | 'conversion';
+/** Routes that serve a download; 'merge' produces one file from many. */
+export type DownloadRoute = Route | 'merge';
 
 export interface ProcessingOption {
   tier: Tier;
@@ -55,4 +57,26 @@ export interface FileItem {
   error?: string;
   /** Object URL for image thumbnails; revoked when the row goes away. */
   previewUrl?: string;
+}
+
+export interface MergeResult {
+  id: string;
+  size: number;
+  pageCount: number;
+  fileCount: number;
+  /** Local file ids that went in, in order. */
+  sourceIds: string[];
+}
+
+export interface MergeState {
+  status: 'idle' | 'running' | 'done' | 'error';
+  /** Local file ids in page order. Mergeable files not listed are left out. */
+  order: string[];
+  /** Local file ids the user deliberately left out. */
+  excluded: string[];
+  name: string;
+  result?: MergeResult;
+  error?: string;
+  /** Local id of the file the backend could not turn into a PDF. */
+  failedFileId?: string;
 }
