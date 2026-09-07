@@ -40,5 +40,10 @@ ENV MAX_FILE_SIZE=50MB
 # Expose the port the app runs on
 EXPOSE 4000
 
+# Drop root: the process only ever needs to read /app and write /app/temp,
+# and running as root turns any path bug into a whole-filesystem one.
+RUN chown -R node:node /app
+USER node
+
 # Start the app
 CMD ["node", "server.js"]
