@@ -11,9 +11,19 @@ const logger = require('../utils/logger');
 const router = express.Router();
 const execPromise = promisify(exec);
 
+// The UI sends 'original' to mean "keep the source format". Resolve it to the
+// source extension so it never lands in a filename or an encoder as a literal.
+const resolveFormat = (filePath, format) => {
+  if (!format || format === 'original') {
+    return path.extname(filePath).slice(1).toLowerCase();
+  }
+  return format.toLowerCase();
+};
+
 // Compress image file
 const compressImage = async (filePath, options) => {
-  const { quality = 80, format = 'jpeg', maxSize } = options;
+  const { quality = 80, format: rawFormat = 'jpeg', maxSize } = options;
+  const format = resolveFormat(filePath, rawFormat);
   const outputPath = path.join(
     path.dirname(filePath),
     `compressed-${path.basename(filePath).split('.')[0]}.${format}`
@@ -86,7 +96,8 @@ const compressPDF = async (filePath, options) => {
 
 // Compress video file
 const compressVideo = async (filePath, options) => {
-  const { quality = 'medium', format = 'mp4', maxSize } = options;
+  const { quality = 'medium', format: rawFormat = 'mp4', maxSize } = options;
+  const format = resolveFormat(filePath, rawFormat);
   const outputPath = path.join(
     path.dirname(filePath),
     `compressed-${path.basename(filePath).split('.')[0]}.${format}`
@@ -104,8 +115,11 @@ const compressVideo = async (filePath, options) => {
                    quality === 'high' ? qualitySettings.high : 
                    qualitySettings.medium;
     
-    // Basic FFmpeg command for compression
-    let cmd = `ffmpeg -i "${filePath}" -c:v libx264 -crf ${setting.crf} -preset ${setting.preset} -c:a aac -b:a 128k "${outputPath}"`;
+    // -y is required: without it FFmpeg prompts before overwriting an existing
+    // output (including /dev/null below) and blocks forever, since exec() gives
+    // it no stdin to answer from.
+    let cmd = `ffmpeg -y -i "${filePath}" -c:v libx264 -crf ${setting.crf} -preset ${setting.preset} -c:a aac -b:a 128k "${outputPath}"`;
+    let passLog = null;
     
     // If max size is specified, use two-pass encoding to target file size
     if (maxSize) {
@@ -113,11 +127,26 @@ const compressVideo = async (filePath, options) => {
       const duration = await getVideoDuration(filePath);
       const bitrate = Math.floor((targetSize * 8) / duration);
       
-      cmd = `ffmpeg -i "${filePath}" -c:v libx264 -b:v ${bitrate}k -pass 1 -f mp4 /dev/null && ` +
-            `ffmpeg -i "${filePath}" -c:v libx264 -b:v ${bitrate}k -pass 2 -c:a aac -b:a 128k "${outputPath}"`;
+      // Each job needs its own pass log. FFmpeg defaults to ffmpeg2pass-0.log in
+      // the working directory, so concurrent jobs would corrupt each other.
+      passLog = path.join(
+        path.dirname(filePath),
+        `passlog-${path.basename(filePath, path.extname(filePath))}`
+      );
+      
+      cmd = `ffmpeg -y -i "${filePath}" -c:v libx264 -b:v ${bitrate}k -pass 1 -passlogfile "${passLog}" -f mp4 /dev/null && ` +
+            `ffmpeg -y -i "${filePath}" -c:v libx264 -b:v ${bitrate}k -pass 2 -passlogfile "${passLog}" -c:a aac -b:a 128k "${outputPath}"`;
     }
     
-    await execPromise(cmd);
+    try {
+      await execPromise(cmd);
+    } finally {
+      if (passLog) {
+        for (const scratch of [`${passLog}-0.log`, `${passLog}-0.log.mbtree`]) {
+          try { fs.unlinkSync(scratch); } catch (e) { /* never written */ }
+        }
+      }
+    }
     return outputPath;
   } catch (error) {
     logger.error('Video compression failed', error);
