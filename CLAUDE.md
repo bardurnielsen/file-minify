@@ -1,128 +1,104 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code (claude.ai/code) working in this repository.
 
-## Project Overview
+## Project overview
 
-FileMinify is a containerized web application for file compression and conversion. It consists of:
-- **Frontend**: React + TypeScript (Vite) application with Tailwind CSS
-- **Backend**: Node.js/Express API for file processing
-- **Infrastructure**: Docker Compose setup with nginx reverse proxy
+FileMinify compresses and converts files, and merges anything printable into a
+single PDF. React + TypeScript frontend, Node/Express backend shelling out to
+FFmpeg, Ghostscript, ImageMagick and LibreOffice, all in Docker behind nginx.
 
-## Common Development Commands
+This repo is a redesign of the original FileMinify. It shares history up to
+`dbcf931`; everything after that is the rework.
 
-### Running the Application
+## Running it
 
-**Production (Docker Compose):**
+**This project runs in Docker Compose. Do not run npm on the host — Node is not
+installed there.**
+
 ```bash
-docker-compose up -d
-```
-- Frontend: http://localhost:3050 (port defined in docker-compose.yml)
-- Backend API: http://localhost:4000
-
-**Development Mode:**
-```bash
-# Frontend (root directory)
-npm install
-npm run dev  # Runs on http://localhost:5173 (Vite default)
-
-# Backend (separate terminal)
-cd backend
-npm install
-npm run dev  # Runs on http://localhost:4000
+docker compose up -d --build            # everything
+docker compose up -d --build frontend   # after a frontend change
+docker compose up -d --build backend    # after a backend change
+docker compose logs --tail=30 backend
 ```
 
-### Build and Testing
-```bash
-# Build frontend for production
-npm run build
+App on **http://localhost:3051**, API on **4001**. The offset from 3050/4000 is
+deliberate so this can run beside the original.
 
-# Lint frontend code
-npm run lint
-
-# Preview production build locally
-npm run preview
-
-# Type checking (via build command)
-npm run build
-```
-
-**Note**: No test framework is configured. If tests are needed, consider adding Vitest for frontend and Jest for backend.
+The frontend image build runs `tsc && vite build`, so a clean build is the type
+check. No test framework is configured.
 
 ## Architecture
 
-### Frontend Structure
-- **State Management**: Zustand store in `src/hooks/useFiles.ts` manages file upload queue and processing state
-- **Component Organization**:
-  - `src/components/file-processor/`: Core functionality (FileUploader, ProcessingQueue, FormatSelector, etc.)
-  - `src/components/layout/`: App structure (Header, Footer, Layout)
-  - `src/components/ui/`: Reusable Radix UI components
-- **Type Definitions**: `src/types.ts` contains all TypeScript interfaces
-- **API Communication**: Direct fetch calls to backend endpoints with FormData for file uploads
+### Frontend
 
-### Backend Architecture
-- **Entry Point**: `server.js` - Express server with middleware setup
-- **Route Structure**:
-  - `routes/upload.js`: Handles file upload with Multer
-  - `routes/compression.js`: PDF, image, and video compression logic
-  - `routes/conversion.js`: Office document to PDF conversion
-- **Processing Libraries**:
-  - Sharp for image manipulation
-  - pdf-lib for PDF compression
-  - FFmpeg (via ffmpeg-static) for video processing
-  - LibreOffice (in Docker container) for document conversion
-- **File Management**: Temporary files stored in `/app/temp` (Docker) or `backend/temp` (local), cleaned after processing
-- **Error Handling**: Centralized error handler in `middleware/errorHandler.js`
-- **Logging**: Winston logger configured in `utils/logger.js`
+- `src/processing.ts` — the decision layer. `routeFor` decides compression vs
+  conversion, `requestBodyFor` turns a tier into what each backend route actually
+  understands, plus staleness and output naming.
+- `src/formats.ts` — the single source of truth for which target formats each
+  source type supports. Mirrors the branches in `backend/routes/conversion.js`.
+- `src/components/file-processor/FileProcessor.tsx` — orchestrator. Per-file XHR
+  upload with real progress, two concurrency lanes (3 general, 1 for LibreOffice
+  work), rerun, download-all.
+- `FileRow` / `AdjustPanel` / `DropZone` / `TierControl` / `MergeDialog` — the UI.
+- `src/lib/api.ts` (fetch wrappers), `src/lib/format.ts` (byte and percentage
+  formatting), `src/hooks/useFiles.ts` (zustand store), `src/types.ts`.
 
-### Docker Configuration
-- **Frontend Container**: Multi-stage build, serves via nginx on port 80
-- **Backend Container**: Includes LibreOffice installation for document conversion
-- **Networking**: Frontend proxies `/api/*` requests to backend:4000
-- **Volumes**: `temp_files` volume for processing temporary files
+### Backend
 
-## Key Implementation Details
+- `server.js` — Express setup, `/health`, and an hourly sweep deleting temp files
+  and stale `merge-*` scratch directories older than an hour.
+- `routes/upload.js` — Multer, `<uuid><ext>` naming, MIME allowlist.
+- `routes/compression.js` — Sharp (images), Ghostscript (PDF), FFmpeg (video).
+- `routes/conversion.js` — between formats, using the shared converters.
+- `routes/merge.js` — ordered merge into one PDF via pdf-lib.
+- `utils/converters.js` — `toPdf` plus `PDF_SOURCE_EXTS`, shared by conversion and
+  merge, and the LibreOffice lock.
 
-- **File Upload Flow**:
-  1. Frontend uses react-dropzone for file selection
-  2. Files are uploaded to `/api/upload` endpoint
-  3. Backend processes files based on operation type
-  4. Processed files are returned as downloadable responses
-  5. Temporary files are automatically cleaned up
+## Invariants — these are fixed bugs, do not regress them
 
-- **Processing Options**:
-  - Images: Quality adjustment (0-100), format conversion
-  - PDFs: Compression level selection
-  - Videos: Bitrate and resolution adjustment
-  - Documents: Direct conversion to PDF via LibreOffice
+1. **`formats.ts` is the source of truth.** Never offer a file its own format, or
+   one its type cannot reach. Adding a backend format means updating both sides.
+2. **One routing rule.** `routeFor` decides both how a file is processed and where
+   it is downloaded from. These were once two hand-maintained condition lists that
+   drifted, sending downloads to the wrong route.
+3. **`-y` on every FFmpeg invocation.** Without it FFmpeg prompts before
+   overwriting an existing output and blocks forever, because `exec()` gives it no
+   stdin. This hung the app three separate times: two-pass output to `/dev/null`,
+   and converting a video to its own format (making output == input). Any shelled
+   command that might overwrite needs its non-interactive flag.
+4. **LibreOffice is serialised** through `withOfficeLock`. Headless mode holds a
+   per-profile lock; a second concurrent conversion fails outright.
+5. **`format: 'original'` means "keep the source format"** and is resolved to the
+   source extension server-side. It must never reach a filename or an encoder as a
+   literal — it once produced files named `compressed-<uuid>.original`.
 
-- **Security Measures**:
-  - Rate limiting: 100 requests per 15 minutes per IP
-  - File size limit: 50MB (configurable via MAX_FILE_SIZE env var)
-  - Helmet.js for security headers
-  - CORS configured for cross-origin requests
-  - Input validation with Joi
+## Behaviour worth knowing
 
-- **Environment Variables**:
-  - `PORT`: Backend server port (default: 4000)
-  - `NODE_ENV`: development/production
-  - `MAX_FILE_SIZE`: Maximum upload size
-  - `VITE_API_URL`: Backend URL for frontend (Docker only)
+- **Compression can inflate.** Re-encoding already-compressed input often grows it.
+  When the result is no smaller and the format is unchanged, the backend keeps the
+  original and reports `compressionRatio: "1.00"`. The UI shows this as "already
+  compact", not as a failure.
+- **Video ignores numeric quality.** With `maxSize` set, FFmpeg runs two-pass
+  targeting that size and the quality value does nothing. PDF and video take a
+  *named* level (`low|medium|high`), not a number — hence tiers.
+- **`maxSize` means different things per type**: a target file size for video, but
+  a megapixel cap for images, where it silently downscales.
+- **Merging is atomic.** One unconvertible file fails the whole merge, with
+  `failedId` naming it. The UI offers leaving it out.
+- **Merge uses the processed output** (`processedId ?? serverId`), so a converted
+  docx is not pushed through LibreOffice twice.
+- **The rate limiter never fires.** It is mounted on `/api/`, but nginx strips that
+  prefix before proxying, so the backend never sees a matching path.
+- **PNG quality is non-monotonic in Sharp** — "Smaller" can produce a larger PNG
+  than "Balanced".
+- Temp files are `<uuid>.<ext>` in `/app/temp` on the `temp_files` volume, swept
+  hourly. The volume survives `docker compose down`; use `-v` to clear it.
 
-## Non-Obvious Implementation Details
+## Testing
 
-- **Temporary File Cleanup**: Runs every hour, deletes files older than 1 hour
-- **UUID File Naming**: Prevents conflicts in multi-user scenarios
-- **API Proxy Pattern**: nginx rewrites `/api/*` to `http://backend:4000/*` in Docker
-- **Vite Optimization**: lucide-react excluded from optimization to prevent build issues
-- **State Updates**: Global options cascade to all idle files in the queue
-- **Error Recovery**: Files persist in UI even on processing errors for retry capability
-- **Office Conversion**: Limited to PDF output only (LibreOffice constraint)
-- **Logging Strategy**: Winston with rotating files, Morgan HTTP logs piped to Winston
-
-## Memories
-- Use docker compose to run this project
-- No test framework is configured - tests need to be set up if required
-- Frontend port is 3050 in Docker, 5173 in development
-- Temporary files are automatically cleaned up after processing
-- This project is ran in docker compose! no need to run npm locally!
+No unit tests. There is an API smoke suite covering upload, compression,
+conversion and error handling at `/home/bn/.cache/fm-test/smoke4001.sh` (targets
+:4001), with fixtures beside it. `curl` needs an explicit `;type=<mime>` on `-F`
+uploads or the MIME allowlist rejects the file.

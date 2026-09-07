@@ -1,107 +1,136 @@
-# FileMinify - File Compression & Conversion Tool
+# FileMinify
 
-FileMinify is a modern web application that allows users to compress PDF files, videos, images, and convert office documents to PDF. Built with React, Node.js, and containerized with Docker for easy deployment.
+A self-hosted web app for shrinking and converting files, and for merging anything
+printable into a single PDF. Drop files in and they are processed immediately —
+there is nothing to configure first.
 
-## Features
+Frontend is React + TypeScript, backend is Node/Express wrapping FFmpeg,
+Ghostscript, ImageMagick, Sharp and LibreOffice. Everything runs in Docker.
 
-- **PDF Compression**: Reduce PDF file sizes while maintaining quality
-- **Image Optimization**: Compress JPEG, PNG, WebP images and convert between formats
-- **Video Compression**: Shrink MP4, WebM, MOV, and AVI files for easier sharing
-- **Document Conversion**: Convert Word, Excel, and PowerPoint files to PDF
-- **Image to PDF**: Convert images directly to PDF format
-- **Batch Processing**: Process multiple files at once with customizable settings
-- **Format Conversion**: Convert between image formats (JPG, PNG, WebP)
-- **Drag-and-Drop Interface**: Easy file upload with visual feedback
-- **Quality Control**: Adjustable compression settings for each file
-- **Secure & Private**: Files automatically deleted after 1 hour
-- **No Registration**: Completely free, no signup required
+## What it does
 
-## Tech Stack
+**Compression** — images (JPG, PNG, WebP, GIF), PDFs, and video (MP4, WebM, MOV,
+AVI). One control, three tiers: *Smaller*, *Balanced* (default), *Best quality*.
+The tier maps onto whatever each encoder actually understands, so it does something
+real in every case rather than sending a number that gets ignored.
 
-### Frontend
-- React with TypeScript
-- Tailwind CSS for styling
-- Framer Motion for animations
-- Radix UI for accessible components
-- React Dropzone for file uploads
-- Zustand for state management
+**Conversion** — only between formats that genuinely work, derived from one table
+(`src/formats.ts`) that mirrors the backend:
 
-### Backend
-- Node.js with Express
-- Multer for file uploads
-- Sharp for image processing
-- pdf-lib for PDF operations
-- FFmpeg for video processing
-- LibreOffice for document conversion
+| Source | Can become |
+| --- | --- |
+| Image | JPG, PNG, WebP, GIF, PDF |
+| PDF | JPG, PNG, WebP, GIF |
+| Video | MP4, WebM, MOV, AVI |
+| Word / Excel / PowerPoint | PDF |
 
-### Infrastructure
-- Docker and Docker Compose
-- Nginx for serving frontend and proxying API requests
-- Winston for logging
-- Security with Helmet, rate limiting, and proper CORS configuration
+A file is never offered its own format, or one its type cannot reach — a PNG has no
+route to MP4, so the option does not appear.
 
-## Getting Started
+**Merge to PDF** — combine 2–20 files into one PDF in an order you control by
+dragging. Images, PDFs and Office documents can all take part; video cannot become
+a PDF and is listed as excluded with the reason. If any one file fails to convert,
+nothing is merged and the response names the file, rather than quietly handing back
+a document with a piece missing.
 
-### Prerequisites
-- Docker and Docker Compose installed
-- Git
+**Honest results** — when re-encoding would make a file *larger* (already-optimised
+PDFs and video often do), the original is kept and reported as-is instead of being
+presented as a saving.
 
-### Installation
+Files are processed in place and deleted an hour after upload. There is no account,
+no database, and nothing leaves the machine you run it on.
 
-1. Clone the repository:
+## Requirements
+
+Docker and Docker Compose. Nothing else — Node is not needed on the host, since
+both images build and run inside Docker.
+
+## Install
+
 ```bash
-git clone https://github.com/yourusername/fileminify.git
-cd fileminify
+git clone https://github.com/bardurnielsen/file-minify-redesign.git
+cd file-minify-redesign
+docker compose up -d --build
 ```
 
-2. Build and start the Docker containers:
+Then open **http://localhost:3051**.
+
+The first build takes a while — the backend image installs LibreOffice, FFmpeg,
+Ghostscript and ImageMagick, around 970 MB of packages. Later builds are cached and
+take seconds.
+
 ```bash
-docker-compose up -d
+docker compose logs -f backend     # follow the backend log
+docker compose down                # stop
+docker compose down -v             # stop and delete uploaded files
 ```
 
-3. Access the application at http://localhost:3050
+### Ports
+
+Defined in `docker-compose.yml`; the app is on **3051** and the API on **4001**.
+These are deliberately offset so this can run alongside the original FileMinify on
+3050/4000. Change the left-hand side of each mapping to move them.
 
 ## Development
 
-### Running in development mode
+Both services build from the repo root. After editing:
 
-1. Install frontend dependencies:
 ```bash
-cd frontend
-npm install
-npm run dev
+docker compose up -d --build frontend   # frontend only
+docker compose up -d --build backend    # backend only
 ```
 
-2. In a separate terminal, install backend dependencies:
-```bash
-cd backend
-npm install
-npm run dev
-```
+The frontend image build runs `tsc && vite build`, so a successful build is also a
+type check. There is no test framework configured.
+
+Running outside Docker is possible (`npm install && npm run dev` at the root for
+Vite on :5173, and in `backend/` for the API on :4000) but the backend then needs
+FFmpeg, Ghostscript, ImageMagick and LibreOffice installed on the host. Docker is
+the supported path.
+
+## API
+
+The frontend talks to these directly; nginx proxies `/api/*` to the backend,
+stripping the prefix.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/upload` | multipart, field `files`, up to 10 files of 50 MB. Returns an `id` per file |
+| `POST` | `/compression/:id` | `{quality, format, maxSize}` → sizes and ratio |
+| `GET` | `/compression/download/:id` | the compressed bytes |
+| `POST` | `/conversion/:id` | `{format}` → sizes and formats |
+| `GET` | `/conversion/download/:id` | the converted bytes |
+| `POST` | `/merge` | `{ids: [...]}`, 2–20, merged in the order given → `{id, size, pageCount, fileCount}` |
+| `GET` | `/merge/download/:id` | the merged PDF |
+| `DELETE` | `/upload/:id` | discard an upload |
+| `GET` | `/health` | `{"status":"ok"}` |
+
+Errors are `{success: false, error: "..."}`. A merge that fails on one file also
+returns `failedId` naming it.
 
 ## Configuration
 
-The application can be configured via environment variables:
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `PORT` | `4000` | backend port inside the container |
+| `NODE_ENV` | `production` | set by Compose |
+| `MAX_FILE_SIZE` | `52428800` | per-file upload limit in bytes |
+| `VITE_API_URL` | `http://backend:4000` | baked into the frontend at build time |
 
-### Backend Environment Variables
-- `PORT`: Port for the backend server (default: 4000)
-- `NODE_ENV`: Environment setting (development/production)
-- `MAX_FILE_SIZE`: Maximum file size allowed for upload (default: 50MB)
+## Notes on running this publicly
 
-## Security
+This is built to be run on your own machine or a private network. Before exposing
+it to the internet, be aware:
 
-FileMinify implements several security measures:
-- HTTPS support through Nginx
-- Secure HTTP headers with Helmet
-- Request rate limiting
-- Input validation
-- Temporary file cleanup
-- CORS policy
+- **Rate limiting is not in effect.** `express-rate-limit` is mounted on `/api/`,
+  but nginx strips that prefix before proxying, so the backend never sees a
+  matching path and the limiter never fires.
+- Uploads are unauthenticated, and anyone who can reach the app can spend CPU on
+  video encoding.
+- Temporary files are readable by any request that can guess a UUID.
 
-## License
+Helmet, CORS and per-file type and size validation are in place.
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+## Licence
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.# Triggering rebuild
+MIT — see [LICENSE](LICENSE).
