@@ -89,8 +89,10 @@ check. No test framework is configured.
   `failedId` naming it. The UI offers leaving it out.
 - **Merge uses the processed output** (`processedId ?? serverId`), so a converted
   docx is not pushed through LibreOffice twice.
-- **The rate limiter never fires.** It is mounted on `/api/`, but nginx strips that
-  prefix before proxying, so the backend never sees a matching path.
+- **The rate limiter is mounted on the paths nginx actually delivers** (`/upload`,
+  `/compression`, `/conversion`, `/merge`) rather than `/api/`, which the proxy
+  strips. `trust proxy` is set to 1 so clients are counted by `X-Forwarded-For`
+  and not by nginx's own container address. `/health` is exempt.
 - **PNG quality is non-monotonic in Sharp** — "Smaller" can produce a larger PNG
   than "Balanced".
 - Temp files are `<uuid>.<ext>` in `/app/temp` on the `temp_files` volume, swept

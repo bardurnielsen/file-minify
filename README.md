@@ -122,14 +122,13 @@ returns `failedId` naming it.
 This is built to be run on your own machine or a private network. Before exposing
 it to the internet, be aware:
 
-- **Rate limiting is not in effect.** `express-rate-limit` is mounted on `/api/`,
-  but nginx strips that prefix before proxying, so the backend never sees a
-  matching path and the limiter never fires.
 - Uploads are unauthenticated, and anyone who can reach the app can spend CPU on
   video encoding.
 - Temporary files are readable by any request that can guess a UUID.
+- There is no TLS here; put it behind a reverse proxy that terminates HTTPS.
 
-Helmet, CORS and per-file type and size validation are in place.
+Helmet, CORS, per-file type and size validation, and rate limiting (600 requests
+per 15 minutes per client IP, counted from `X-Forwarded-For`) are in place.
 
 ## Licence
 
