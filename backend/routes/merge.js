@@ -6,19 +6,11 @@ const { PDFDocument } = require('pdf-lib');
 const { AppError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
 const { toPdf, PDF_SOURCE_EXTS } = require('../utils/converters');
+const { isSafeId } = require('../utils/safeId');
 
 const router = express.Router();
 const TEMP_DIR = path.join(__dirname, '../temp');
 const MAX_SOURCES = 20;
-
-// Ids are bare temp-file names (`<uuid>.<ext>`, or a result such as
-// `compressed-<uuid>.pdf`); anything path-like is refused.
-const isSafeId = (id) =>
-  typeof id === 'string' &&
-  id.length > 0 &&
-  id.length < 200 &&
-  path.basename(id) === id &&
-  !id.includes('..');
 
 const failWith = (message, statusCode, failedId) => {
   const err = new AppError(message, statusCode);

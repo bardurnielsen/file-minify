@@ -4,6 +4,8 @@ const fs = require('fs');
 const { exec } = require('child_process');
 const { promisify } = require('util');
 const { AppError } = require('../middleware/errorHandler');
+const { isSafeId } = require('../utils/safeId');
+const { RUN } = require('../utils/run');
 const logger = require('../utils/logger');
 const { convertOfficeToPDF, convertImageToPDF } = require('../utils/converters');
 
@@ -64,7 +66,7 @@ const convertVideo = async (filePath, format) => {
     // -y is required: without it FFmpeg prompts before overwriting an existing
     // output and blocks forever, since exec() gives it no stdin to answer from.
     const cmd = `ffmpeg -y -i "${filePath}" "${outputPath}"`;
-    await execPromise(cmd);
+    await execPromise(cmd, RUN);
     return outputPath;
   } catch (error) {
     logger.error('Video conversion failed', error);
@@ -82,7 +84,7 @@ const convertPDFToImage = async (filePath, format) => {
   try {
     // Use ImageMagick to convert PDF to image (first page only)
     const cmd = `convert "${filePath}[0]" "${outputPath}"`;
-    await execPromise(cmd);
+    await execPromise(cmd, RUN);
     
     // Check if the output file exists
     if (!fs.existsSync(outputPath)) {
@@ -100,6 +102,9 @@ const convertPDFToImage = async (filePath, format) => {
 router.post('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
+    if (!isSafeId(id)) {
+      throw new AppError('File not found', 404);
+    }
     let { format } = req.body;
     
     // If body contains options object, extract format from it
@@ -188,6 +193,9 @@ router.post('/:id', async (req, res, next) => {
 router.get('/download/:id', (req, res, next) => {
   try {
     const { id } = req.params;
+    if (!isSafeId(id)) {
+      throw new AppError('File not found', 404);
+    }
     const filePath = path.join(__dirname, '../temp', id);
     
     // Check if file exists
