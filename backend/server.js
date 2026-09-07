@@ -27,13 +27,26 @@ const app = express();
 app.use(helmet());
 app.use(cors());
 
-// Apply rate limiting
+// nginx is the only thing in front of this, and it sets X-Forwarded-For.
+// Without this the limiter sees nginx's container address for every visitor and
+// buckets them all together, so one busy client locks out everyone.
+app.set('trust proxy', 1);
+
+// Apply rate limiting. nginx proxies /api/* here with the prefix stripped, so
+// the paths that actually arrive are /upload, /compression, ... -- mounting this
+// on '/api/' matched nothing and the limiter never fired. /health is left open
+// so container health checks cannot be throttled.
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  // Each file costs roughly three requests (upload, process, download), so a
+  // batch adds up quickly. Set high enough not to interrupt genuine use, low
+  // enough to blunt an unattended script.
+  max: 600,
   message: 'Too many requests from this IP, please try again later',
+  standardHeaders: true,
+  legacyHeaders: false,
 });
-app.use('/api/', limiter);
+app.use(['/upload', '/compression', '/conversion'], limiter);
 
 // Parse JSON body
 app.use(express.json());
