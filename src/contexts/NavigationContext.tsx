@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState } from 'react';
 
-type Page = 'home' | 'features' | 'howitworks' | 'getstarted';
+export type Page = 'home' | 'howitworks';
 
 interface NavigationContextType {
   currentPage: Page;
@@ -11,7 +11,6 @@ const NavigationContext = createContext<NavigationContextType | undefined>(undef
 
 export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentPage, setCurrentPage] = useState<Page>('home');
-
   return (
     <NavigationContext.Provider value={{ currentPage, setCurrentPage }}>
       {children}
@@ -21,8 +20,6 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
 export const useNavigation = () => {
   const context = useContext(NavigationContext);
-  if (!context) {
-    throw new Error('useNavigation must be used within a NavigationProvider');
-  }
+  if (!context) throw new Error('useNavigation must be used within a NavigationProvider');
   return context;
 };

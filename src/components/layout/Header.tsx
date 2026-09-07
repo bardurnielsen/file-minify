@@ -1,55 +1,73 @@
-import React from 'react';
-import { FileDown } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Moon, Sun } from 'lucide-react';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { useTheme } from '../theme-provider';
+import { cn } from '../../lib/format';
+
+const Logo: React.FC = () => (
+  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-zinc-900 text-white dark:bg-zinc-50 dark:text-zinc-900">
+    <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M8 2v5m0 0L5.5 4.5M8 7l2.5-2.5" />
+      <path d="M8 14V9m0 0l-2.5 2.5M8 9l2.5 2.5" />
+    </svg>
+  </span>
+);
+
+const useResolvedTheme = () => {
+  const { theme } = useTheme();
+  const [system, setSystem] = useState(() =>
+    window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = () => setSystem(mq.matches ? 'dark' : 'light');
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return theme === 'system' ? system : theme;
+};
 
 const Header: React.FC = () => {
   const { currentPage, setCurrentPage } = useNavigation();
+  const { setTheme } = useTheme();
+  const resolved = useResolvedTheme();
 
   return (
-    <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm sticky top-0 z-10 border-b border-slate-200 dark:border-slate-800">
-      <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-        <div 
-          className="flex items-center space-x-2 cursor-pointer"
+    <header className="sticky top-0 z-20 border-b border-zinc-200/70 bg-zinc-50/80 backdrop-blur-md dark:border-zinc-800/80 dark:bg-zinc-950/70">
+      <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-4 sm:px-6">
+        <button
+          type="button"
           onClick={() => setCurrentPage('home')}
+          className="flex items-center gap-2.5 rounded-lg focus-ring"
+          aria-label="FileMinify home"
         >
-          <FileDown className="h-6 w-6 text-primary-600 dark:text-primary-400" />
-          <h1 className="text-xl font-bold bg-gradient-to-r from-primary-600 to-accent-600 bg-clip-text text-transparent">
+          <Logo />
+          <span className="text-[15px] font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
             FileMinify
-          </h1>
-        </div>
-        <nav>
-          <ul className="flex space-x-6">
-            <li>
-              <button 
-                onClick={() => setCurrentPage('features')}
-                className={`text-slate-600 dark:text-slate-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors ${
-                  currentPage === 'features' ? 'text-primary-600 dark:text-primary-400' : ''
-                }`}
-              >
-                Features
-              </button>
-            </li>
-            <li>
-              <button 
-                onClick={() => setCurrentPage('howitworks')}
-                className={`text-slate-600 dark:text-slate-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors ${
-                  currentPage === 'howitworks' ? 'text-primary-600 dark:text-primary-400' : ''
-                }`}
-              >
-                How It Works
-              </button>
-            </li>
-            <li>
-              <button 
-                onClick={() => setCurrentPage('getstarted')}
-                className={`text-white bg-primary-600 hover:bg-primary-700 px-4 py-2 rounded-lg transition-colors ${
-                  currentPage === 'getstarted' ? 'bg-primary-700' : ''
-                }`}
-              >
-                Get Started
-              </button>
-            </li>
-          </ul>
+          </span>
+        </button>
+
+        <nav className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setCurrentPage(currentPage === 'howitworks' ? 'home' : 'howitworks')}
+            className={cn(
+              'h-8 rounded-lg px-3 text-[13px] font-medium transition-colors focus-ring',
+              currentPage === 'howitworks'
+                ? 'bg-zinc-200/70 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50'
+                : 'text-zinc-600 hover:bg-zinc-200/60 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50'
+            )}
+          >
+            How it works
+          </button>
+          <button
+            type="button"
+            onClick={() => setTheme(resolved === 'dark' ? 'light' : 'dark')}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-600 transition-colors hover:bg-zinc-200/60 hover:text-zinc-900 focus-ring dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
+            aria-label={resolved === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {resolved === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
         </nav>
       </div>
     </header>

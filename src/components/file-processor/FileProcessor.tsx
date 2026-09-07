@@ -1,301 +1,397 @@
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './tabs';
-import FileUploader from './FileUploader';
-import ProcessingOptions from './ProcessingOptions';
-import ProcessingQueue from './ProcessingQueue';
-import { FileItem, FileType, ProcessingOption } from '../../types';
-import { isFormatValidFor, KEEP_ORIGINAL } from '../../formats';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import { FileRejection, useDropzone } from 'react-dropzone';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Download, RefreshCw, Trash2 } from 'lucide-react';
+import { FileItem, ProcessingOption, Tier } from '../../types';
+import { KEEP_ORIGINAL } from '../../formats';
+import {
+  ACCEPT,
+  MAX_FILES_PER_DROP,
+  MAX_FILE_BYTES,
+  detectType,
+  isOffice,
+  isStale,
+  outputNameFor,
+  requestBodyFor,
+  routeFor,
+} from '../../processing';
+import { deleteUpload, downloadBlob, processFile, uploadFile } from '../../lib/api';
+import { formatBytes, percentChange, plural, uid, cn } from '../../lib/format';
 import { useFiles } from '../../hooks/useFiles';
 import { useToast } from '../ui/toaster';
+import { Button } from '../ui/button';
+import { AddMoreStrip, DropHero } from './DropZone';
+import FileRow from './FileRow';
+import TierControl from './TierControl';
 
-const API_BASE_URL = '/api';
+// Images and PDFs finish in well under a second; video can take minutes and
+// starves the box if too many run at once. Three keeps the queue moving.
+const CONCURRENCY = 3;
+// LibreOffice refuses to run two headless conversions at once (profile lock),
+// so Office files go through their own single-file lane.
+const OFFICE_CONCURRENCY = 1;
 
-const OFFICE_TYPES: FileType[] = ['document', 'spreadsheet', 'presentation'];
+const createLimiter = (limit: number) => {
+  let active = 0;
+  const queue: Array<() => void> = [];
+  const next = () => {
+    if (active >= limit || queue.length === 0) return;
+    active += 1;
+    queue.shift()!();
+  };
+  return <T,>(task: () => Promise<T>) =>
+    new Promise<T>((resolve, reject) => {
+      queue.push(() => {
+        task()
+          .then(resolve, reject)
+          .finally(() => {
+            active -= 1;
+            next();
+          });
+      });
+      next();
+    });
+};
 
-// Office files only ever convert (to PDF); everything else converts when an
-// explicit target format was chosen, and compresses otherwise.
-const isConversionFor = (file: FileItem) =>
-  OFFICE_TYPES.includes(file.type) || file.options.format !== KEEP_ORIGINAL.value;
+const saveBlob = (blob: Blob, name: string) => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+const rejectionMessage = (r: FileRejection) => {
+  const code = r.errors[0]?.code;
+  if (code === 'file-too-large') return `${r.file.name} is over 50 MB.`;
+  if (code === 'file-invalid-type') return `${r.file.name} isn't a supported type.`;
+  return `${r.file.name} couldn't be added.`;
+};
 
 const FileProcessor: React.FC = () => {
-  const { files, addFiles, removeFile, updateFile, clearFiles } = useFiles();
+  const files = useFiles((s) => s.files);
+  const defaultTier = useFiles((s) => s.defaultTier);
   const { addToast } = useToast();
-  const [activeTab, setActiveTab] = useState<string>('upload');
-  const [globalOptions, setGlobalOptions] = useState<ProcessingOption>({
-    quality: 80,
-    format: 'original',
-    maxSize: 10,
+  const limiter = useRef(createLimiter(CONCURRENCY)).current;
+  const officeLimiter = useRef(createLimiter(OFFICE_CONCURRENCY)).current;
+
+  // Always read the freshest copy inside async work; options can change while
+  // a file waits in the queue and the run must honour what the row shows.
+  const getFile = (id: string) => useFiles.getState().files.find((f) => f.id === id);
+  const update = useFiles.getState().updateFile;
+
+  const run = useCallback(
+    (id: string) => {
+      const lane = isOffice(getFile(id)?.type ?? 'other') ? officeLimiter : limiter;
+      return lane(async () => {
+        let file = getFile(id);
+        if (!file) return;
+        try {
+          if (!file.serverId) {
+            update(id, { status: 'uploading', uploadProgress: 0, error: undefined });
+            const uploaded = await uploadFile(file.file, (fraction) =>
+              update(id, { uploadProgress: fraction })
+            );
+            update(id, { serverId: uploaded.id, uploadProgress: 1 });
+          }
+          file = getFile(id);
+          if (!file?.serverId) return; // removed while uploading
+          const { type, options, serverId } = file;
+          const route = routeFor(type, options);
+          update(id, { status: 'processing', startedAt: Date.now(), result: undefined, error: undefined });
+          const data = await processFile(serverId, route, requestBodyFor(type, options));
+          const outputSize = data.compressedSize ?? data.convertedSize ?? file.size;
+          const ext = data.id.includes('.') ? data.id.split('.').pop()!.toLowerCase() : '';
+          if (!getFile(id)) return;
+          update(id, {
+            status: 'done',
+            result: {
+              processedId: data.id,
+              route,
+              outputSize,
+              outputFormat: data.newFormat ?? ext,
+              // The backend hands back the upload itself when re-encoding would not
+              // have made it smaller.
+              unchanged: route === 'compression' && (data.id === serverId || outputSize >= file.size),
+              options,
+            },
+          });
+        } catch (error) {
+          if (!getFile(id)) return;
+          update(id, {
+            status: 'error',
+            error: error instanceof Error ? error.message : 'Something went wrong.',
+          });
+        }
+      });
+    },
+    [limiter, officeLimiter, update]
+  );
+
+  const handleDrop = useCallback(
+    (accepted: File[], rejected: FileRejection[]) => {
+      rejected.slice(0, 3).forEach((r) =>
+        addToast({ type: 'error', title: 'Skipped a file', description: rejectionMessage(r), duration: 6000 })
+      );
+      if (accepted.length > MAX_FILES_PER_DROP) {
+        addToast({
+          type: 'warning',
+          title: `Only the first ${MAX_FILES_PER_DROP} files were added`,
+          description: 'Drop the rest once these are done.',
+          duration: 6000,
+        });
+      }
+      const batch = accepted.slice(0, MAX_FILES_PER_DROP);
+      if (batch.length === 0) return;
+
+      const tier = useFiles.getState().defaultTier;
+      const items: FileItem[] = batch.map((file) => ({
+        id: uid(),
+        file,
+        name: file.name,
+        size: file.size,
+        type: detectType(file),
+        status: 'queued',
+        uploadProgress: 0,
+        options: { tier, format: KEEP_ORIGINAL.value },
+        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
+      }));
+      useFiles.getState().addFiles(items);
+      items.forEach((item) => void run(item.id));
+    },
+    [addToast, run]
+  );
+
+  const { getRootProps, getInputProps, open, isDragActive, isDragReject } = useDropzone({
+    onDrop: handleDrop,
+    accept: ACCEPT,
+    maxSize: MAX_FILE_BYTES,
+    multiple: true,
+    noClick: true,
+    noKeyboard: true,
+    useFsAccessApi: false,
   });
 
-  const handleFilesAccepted = async (acceptedFiles: File[]) => {
-    try {
-      // Clear existing files when starting a new upload
-      clearFiles();
-      
-      const formData = new FormData();
-      acceptedFiles.forEach(file => {
-        formData.append('files', file);
-      });
-
-      const response = await fetch(`${API_BASE_URL}/upload`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || 'Upload failed');
-      }
-
-      const data = await response.json();
-
-      if (!data.success || !Array.isArray(data.data)) {
-        throw new Error('Invalid response format from server');
-      }
-      
-      const newFiles = data.data.map((fileData: any, index: number) => {
-        let type: FileType = 'other';
-        if (fileData.mimetype.includes('image')) type = 'image';
-        else if (fileData.mimetype.includes('video')) type = 'video';
-        else if (fileData.mimetype.includes('pdf')) type = 'pdf';
-        else if (fileData.mimetype.includes('word')) type = 'document';
-        else if (fileData.mimetype.includes('excel') || fileData.mimetype.includes('spreadsheetml')) type = 'spreadsheet';
-        else if (fileData.mimetype.includes('powerpoint') || fileData.mimetype.includes('presentationml')) type = 'presentation';
-        else if (fileData.mimetype.includes('wordprocessingml')) type = 'document';
-
-        // Match by index since files are uploaded in the same order
-        const originalFile = acceptedFiles[index];
-        if (!originalFile) {
-          throw new Error(`Original file not found at index ${index}`);
-        }
-
-        return {
-          id: fileData.id,
-          file: originalFile,
-          name: fileData.originalName,
-          size: fileData.size,
-          type,
-          status: 'idle',
-          progress: 0,
-          options: {
-            ...globalOptions,
-            format: isFormatValidFor(globalOptions.format, type, fileData.originalName)
-              ? globalOptions.format
-              : KEEP_ORIGINAL.value,
-          },
-        };
-      });
-
-      addFiles(newFiles);
-      
-      if (newFiles.length > 0) {
-        setActiveTab('options');
-        addToast({
-          type: 'success',
-          title: 'Files uploaded successfully',
-          description: `${newFiles.length} files ready for processing`,
-          duration: 3000, // 3 seconds for success messages
-        });
-      }
-    } catch (error) {
-      console.error('Upload error:', error);
-      addToast({
-        type: 'error',
-        title: 'Upload failed',
-        description: error instanceof Error ? error.message : 'There was an error uploading your files',
-        duration: 7000, // 7 seconds for error messages
-      });
-    }
+  const rerun = (id: string, options?: ProcessingOption) => {
+    const file = getFile(id);
+    if (!file) return;
+    update(id, { options: options ?? file.options, status: 'queued' });
+    void run(id);
   };
 
-  const handleProcessFiles = async () => {
-    for (const file of files) {
-      if (file.status !== 'idle') continue;
-
-      try {
-        updateFile(file.id, { status: 'processing', progress: 0 });
-
-        // The selector only offers formats that differ from the source, so any
-        // explicit choice is a conversion. Office files always convert to PDF.
-        const endpoint = isConversionFor(file) ? '/conversion' : '/compression';
-
-        const response = await fetch(`${API_BASE_URL}${endpoint}/${file.id}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ 
-            format: file.options.format,
-            quality: file.options.quality,
-            maxSize: file.options.maxSize 
-          }),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(errorText || 'Processing failed');
-        }
-
-        const data = await response.json();
-        
-        updateFile(file.id, { 
-          status: 'completed', 
-          progress: 100,
-          processedId: data.data.id,
-          compressedSize: data.data.compressedSize || data.data.convertedSize,
-        });
-
-        addToast({
-          type: 'success',
-          title: 'File processed successfully',
-          description: `${file.name} has been processed and is ready for download`,
-          duration: 4000, // 4 seconds for processing success
-        });
-      } catch (error) {
-        console.error('Processing error:', error);
-        updateFile(file.id, { status: 'error', progress: 0 });
-        addToast({
-          type: 'error',
-          title: 'Processing failed',
-          description: error instanceof Error ? error.message : `Failed to process ${file.name}`,
-          duration: 7000, // 7 seconds for processing errors
-        });
-      }
-    }
-    
-    setActiveTab('queue');
+  const remove = (id: string) => {
+    const file = getFile(id);
+    if (!file) return;
+    if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
+    if (file.serverId) void deleteUpload(file.serverId);
+    useFiles.getState().removeFile(id);
   };
 
-  const handleDownload = async (fileId: string, processedId: string) => {
+  const clearAll = () => {
+    useFiles.getState().files.forEach((f) => {
+      if (f.previewUrl) URL.revokeObjectURL(f.previewUrl);
+      if (f.serverId) void deleteUpload(f.serverId);
+    });
+    useFiles.getState().clearFiles();
+  };
+
+  const download = async (id: string) => {
+    const file = getFile(id);
+    if (!file?.result) return;
     try {
-      const file = files.find(f => f.id === fileId);
-      if (!file) return;
-
-      // Must match the routing used to process the file, or the download hits
-      // the wrong route.
-      const isConversion = isConversionFor(file);
-      const endpoint = isConversion ? '/conversion/download' : '/compression/download';
-
-      const response = await fetch(`${API_BASE_URL}${endpoint}/${processedId}`);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || 'Download failed');
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      
-      // Determine the correct filename with appropriate extension
-      let downloadName = file.name;
-      if (isConversion) {
-        // For conversions, replace the extension with the target format
-        const nameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
-        const targetFormat = file.options.format || 'pdf';
-        downloadName = `${nameWithoutExt}.${targetFormat}`;
-      } else {
-        // For compressions, keep the original extension
-        downloadName = `compressed-${file.name}`;
-      }
-      
-      a.download = downloadName;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      addToast({
-        type: 'success',
-        title: 'Download started',
-        description: `${file.name} is being downloaded`,
-        duration: 3000, // 3 seconds for download notifications
-      });
+      // Route and options come from the result, i.e. what actually produced the
+      // file - not the row's current (possibly edited) settings.
+      const blob = await downloadBlob(file.result.route, file.result.processedId);
+      saveBlob(blob, outputNameFor(file.name, file.type, file.result.options));
     } catch (error) {
-      console.error('Download error:', error);
       addToast({
         type: 'error',
         title: 'Download failed',
-        description: error instanceof Error ? error.message : 'There was an error downloading your file',
-        duration: 7000, // 7 seconds for download errors
+        description: error instanceof Error ? error.message : 'Please try again.',
+        duration: 6000,
       });
     }
   };
 
-  const handleOptionChange = (fileId: string, options: Partial<ProcessingOption>) => {
-    updateFile(fileId, { options: { ...files.find(f => f.id === fileId)?.options!, ...options } });
+  const downloadAll = async () => {
+    const done = useFiles.getState().files.filter((f) => f.status === 'done');
+    for (const [i, f] of done.entries()) {
+      await download(f.id);
+      if (i < done.length - 1) await new Promise((r) => setTimeout(r, 400));
+    }
   };
 
-  const handleGlobalOptionChange = (options: Partial<ProcessingOption>) => {
-    const newOptions = { ...globalOptions, ...options };
-    setGlobalOptions(newOptions);
-    
-    files.forEach(file => {
-      if (file.status === 'idle') {
-        updateFile(file.id, { options: newOptions });
-      }
+  const setTierForAll = (tier: Tier) => {
+    useFiles.getState().setDefaultTier(tier);
+    useFiles.getState().files.forEach((f) => {
+      if (f.status === 'processing' || f.status === 'uploading') return;
+      update(f.id, { options: { ...f.options, tier, quality: undefined } });
     });
   };
 
+  // Object URLs for thumbnails are released when the page unloads.
+  useEffect(
+    () => () => {
+      useFiles.getState().files.forEach((f) => f.previewUrl && URL.revokeObjectURL(f.previewUrl));
+    },
+    []
+  );
+
+  const summary = useMemo(() => {
+    const done = files.filter((f) => f.status === 'done' && f.result);
+    const busy = files.filter((f) => f.status !== 'done' && f.status !== 'error').length;
+    const before = done.reduce((s, f) => s + f.size, 0);
+    const after = done.reduce((s, f) => s + (f.result?.outputSize ?? 0), 0);
+    return {
+      done: done.length,
+      busy,
+      stale: files.filter(isStale).length,
+      saved: before - after,
+      pct: percentChange(before, after),
+    };
+  }, [files]);
+
+  const hasFiles = files.length > 0;
+  const allTiersEqual = files.every((f) => f.options.tier === files[0]?.options.tier);
+  const toolbarTier: Tier = hasFiles && allTiersEqual ? files[0].options.tier : defaultTier;
+
   return (
-    <div className="max-w-4xl mx-auto">
-      <motion.div 
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="bg-white dark:bg-slate-800 rounded-xl shadow-lg overflow-hidden"
+    <div className="space-y-8">
+      <div className="text-center">
+        <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 sm:text-[2.5rem] sm:leading-[1.1]">
+          Smaller files. Nothing to fiddle with.
+        </h1>
+        <p className="mx-auto mt-3 max-w-lg text-[15px] leading-relaxed text-zinc-500 dark:text-zinc-400">
+          Compress images, video and PDFs, or turn Office documents into PDFs. Good defaults
+          are chosen for you; every setting is still one click away.
+        </p>
+      </div>
+
+      <motion.section
+        {...getRootProps()}
+        layout
+        className={cn(
+          'relative rounded-[24px] border bg-white shadow-card outline-none dark:bg-zinc-900 dark:shadow-card-dark',
+          hasFiles && isDragActive
+            ? 'border-emerald-400 dark:border-emerald-500'
+            : 'border-zinc-200/80 dark:border-zinc-800'
+        )}
       >
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <div className="p-4 md:p-6 border-b border-slate-200 dark:border-slate-700">
-            <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-200 mb-2">
-              File Compression & Conversion
-            </h2>
-            <p className="text-slate-600 dark:text-slate-400 mb-4">
-              Compress and convert your files with ease. Support for images, videos, PDFs, and more.
-            </p>
-            <TabsList className="grid grid-cols-3 w-full">
-              <TabsTrigger value="upload">Upload</TabsTrigger>
-              <TabsTrigger value="options" disabled={files.length === 0}>Options</TabsTrigger>
-              <TabsTrigger value="queue" disabled={files.length === 0}>Queue</TabsTrigger>
-            </TabsList>
+        <input {...getInputProps()} />
+
+        {!hasFiles ? (
+          <DropHero
+            onBrowse={open}
+            isDragActive={isDragActive}
+            isDragReject={isDragReject}
+            defaultTier={defaultTier}
+            onTierChange={(tier) => useFiles.getState().setDefaultTier(tier)}
+          />
+        ) : (
+          <div className="p-3 sm:p-4">
+            {/* Toolbar: what happened, and the one global control. */}
+            <div className="flex flex-col gap-3 px-1 pb-3 pt-1 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                  {summary.busy > 0
+                    ? `Working on ${plural(summary.busy, 'file')}…`
+                    : summary.saved > 0
+                      ? `Saved ${formatBytes(summary.saved)}`
+                      : summary.done > 0
+                        ? 'All done'
+                        : plural(files.length, 'file')}
+                </div>
+                <div className="text-xs text-zinc-400 dark:text-zinc-500">
+                  {summary.busy === 0 && summary.saved > 0 && summary.done > 0
+                    ? `${summary.pct}% smaller across ${plural(summary.done, 'file')}`
+                    : `${plural(files.length, 'file')}${summary.done > 0 ? ` · ${summary.done} ready` : ''}`}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <TierControl id="toolbar" size="sm" value={toolbarTier} onChange={setTierForAll} />
+                <AnimatePresence initial={false}>
+                  {summary.stale > 0 && (
+                    <motion.div
+                      key="apply"
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                    >
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => files.filter(isStale).forEach((f) => rerun(f.id))}
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        Redo {summary.stale}
+                      </Button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                {summary.done >= 2 && summary.busy === 0 && (
+                  <Button variant="secondary" size="sm" onClick={downloadAll}>
+                    <Download className="h-3.5 w-3.5" />
+                    Download all
+                  </Button>
+                )}
+                <Button variant="ghost" size="sm" onClick={clearAll} aria-label="Clear all files">
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Clear
+                </Button>
+              </div>
+            </div>
+
+            <ul className="space-y-2">
+              <AnimatePresence initial={false}>
+                {files.map((file) => (
+                  <FileRow
+                    key={file.id}
+                    file={file}
+                    onDownload={() => download(file.id)}
+                    onRemove={() => remove(file.id)}
+                    onRerun={(options) => rerun(file.id, options)}
+                  />
+                ))}
+              </AnimatePresence>
+            </ul>
+
+            <div className="mt-2">
+              <AddMoreStrip onBrowse={open} />
+            </div>
+
+            <AnimatePresence>
+              {isDragActive && (
+                <motion.div
+                  key="overlay"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[24px] bg-white/85 backdrop-blur-sm dark:bg-zinc-900/85"
+                >
+                  <div className="rounded-2xl border-2 border-dashed border-emerald-500 px-8 py-6 text-center">
+                    <div className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+                      {isDragReject ? 'That type isn’t supported' : 'Drop to add'}
+                    </div>
+                    <div className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                      They&apos;ll start right away with the current quality setting.
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
+        )}
+      </motion.section>
 
-          <div className="p-4 md:p-6">
-            <TabsContent value="upload" className="mt-0">
-              <FileUploader onFilesAccepted={handleFilesAccepted} />
-            </TabsContent>
-
-            <TabsContent value="options" className="mt-0">
-              <ProcessingOptions 
-                files={files}
-                globalOptions={globalOptions}
-                onOptionChange={handleOptionChange}
-                onGlobalOptionChange={handleGlobalOptionChange}
-                onProcess={handleProcessFiles}
-              />
-            </TabsContent>
-
-            <TabsContent value="queue" className="mt-0">
-              <ProcessingQueue 
-                files={files}
-                onRemoveFile={removeFile}
-                onDownload={handleDownload}
-                onClearCompleted={() => {
-                  const newFiles = files.filter(file => file.status !== 'completed');
-                  clearFiles();
-                  addFiles(newFiles);
-                }}
-                onClearAll={() => {
-                  clearFiles();
-                  setActiveTab('upload');
-                }}
-              />
-            </TabsContent>
-          </div>
-        </Tabs>
-      </motion.div>
+      {!hasFiles && (
+        <p className="text-center text-xs text-zinc-400 dark:text-zinc-500">
+          Up to 10 files at a time · Files are deleted from the server within an hour
+        </p>
+      )}
     </div>
   );
 };

@@ -80,21 +80,21 @@ export function Toaster() {
   const { toasts, removeToast } = useToast();
 
   const icons = {
-    success: <CheckCircle className="w-5 h-5 text-success-500" />,
-    error: <XCircle className="w-5 h-5 text-error-500" />,
-    warning: <AlertTriangle className="w-5 h-5 text-warning-500" />,
-    info: <Info className="w-5 h-5 text-primary-500" />,
+    success: <CheckCircle className="w-5 h-5 text-emerald-500" />,
+    error: <XCircle className="w-5 h-5 text-rose-500" />,
+    warning: <AlertTriangle className="w-5 h-5 text-amber-500" />,
+    info: <Info className="w-5 h-5 text-zinc-500" />,
   };
 
   const backgrounds = {
-    success: 'bg-success-50 dark:bg-success-950/40 border-success-200 dark:border-success-900',
-    error: 'bg-error-50 dark:bg-error-950/40 border-error-200 dark:border-error-900',
-    warning: 'bg-warning-50 dark:bg-warning-950/40 border-warning-200 dark:border-warning-900',
-    info: 'bg-primary-50 dark:bg-primary-950/40 border-primary-200 dark:border-primary-900',
+    success: 'border-emerald-200 dark:border-emerald-900',
+    error: 'border-rose-200 dark:border-rose-900',
+    warning: 'border-amber-200 dark:border-amber-900',
+    info: 'border-zinc-200 dark:border-zinc-700',
   };
 
   return (
-    <div className="fixed bottom-0 right-0 p-4 z-50 space-y-4 w-full sm:w-96">
+    <div className="fixed bottom-0 right-0 z-50 w-full space-y-3 p-4 sm:w-96">
       <AnimatePresence>
         {toasts.map((toast) => (
           <motion.div
@@ -102,23 +102,23 @@ export function Toaster() {
             initial={{ x: 50, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 50, opacity: 0 }}
-            className={`relative rounded-lg border shadow-md p-4 ${backgrounds[toast.type]}`}
+            className={`relative rounded-xl border bg-white p-4 shadow-lg dark:bg-zinc-900 ${backgrounds[toast.type]}`}
           >
             <div className="flex items-start">
               <div className="flex-shrink-0">{icons[toast.type]}</div>
               <div className="ml-3 flex-1">
-                <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
                   {toast.title}
                 </p>
                 {toast.description && (
-                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                  <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
                     {toast.description}
                   </p>
                 )}
               </div>
               <button
                 onClick={() => removeToast(toast.id)}
-                className="flex-shrink-0 ml-2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                className="flex-shrink-0 ml-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
               >
                 <X className="w-4 h-4" />
               </button>

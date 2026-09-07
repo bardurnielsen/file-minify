@@ -5,7 +5,7 @@ export interface FormatOption {
   label: string;
 }
 
-export const KEEP_ORIGINAL: FormatOption = { value: 'original', label: 'Keep Original' };
+export const KEEP_ORIGINAL: FormatOption = { value: 'original', label: 'Keep format' };
 
 // Target formats the backend can actually produce for each source type.
 // Mirrors the branches in backend/routes/conversion.js - keep the two in sync.
@@ -35,7 +35,10 @@ const TARGETS: Record<FileType, FormatOption[]> = {
   other: [],
 };
 
-const extensionOf = (fileName: string) =>
+/** Every target a file type can become, regardless of source extension. */
+export const targetsFor = (type: FileType): FormatOption[] => TARGETS[type];
+
+export const extensionOf = (fileName: string) =>
   fileName.includes('.') ? fileName.split('.').pop()!.toLowerCase() : '';
 
 // Converting a file to the format it already is either fails outright (Sharp
@@ -52,19 +55,6 @@ export const formatsFor = (type: FileType, fileName: string): FormatOption[] => 
   KEEP_ORIGINAL,
   ...TARGETS[type].filter((option) => !isSourceFormat(option.value, fileName)),
 ];
-
-// Formats offered when one setting is applied to every file at once: only those
-// valid for all of them, so a global choice can never produce an invalid pair.
-export const commonFormatsFor = (
-  files: { type: FileType; name: string }[]
-): FormatOption[] => {
-  if (files.length === 0) return [KEEP_ORIGINAL];
-  const perFile = files.map((file) => formatsFor(file.type, file.name));
-  const shared = perFile[0].filter((option) =>
-    perFile.every((options) => options.some((o) => o.value === option.value))
-  );
-  return shared;
-};
 
 export const isFormatValidFor = (format: string, type: FileType, fileName: string) =>
   formatsFor(type, fileName).some((option) => option.value === format);

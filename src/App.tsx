@@ -1,64 +1,28 @@
 import React from 'react';
+import { MotionConfig } from 'framer-motion';
 import { ThemeProvider } from './components/theme-provider';
-import { Toaster, ToastProvider } from './components/ui/toaster';
+import { ToastProvider } from './components/ui/toaster';
 import Layout from './components/layout/Layout';
 import FileProcessor from './components/file-processor/FileProcessor';
-import FeaturesTab from './components/file-processor/FeaturesTab';
-import HowItWorksTab from './components/file-processor/HowItWorksTab';
-import GetStartedTab from './components/file-processor/GetStartedTab';
+import HowItWorks from './components/pages/HowItWorks';
 import { NavigationProvider, useNavigation } from './contexts/NavigationContext';
 
 function AppContent() {
-  const { currentPage, setCurrentPage } = useNavigation();
-
-  const renderPage = () => {
-    switch (currentPage) {
-      case 'features':
-        return (
-          <div className="max-w-4xl mx-auto">
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 md:p-8">
-              <FeaturesTab />
-            </div>
-          </div>
-        );
-      case 'howitworks':
-        return (
-          <div className="max-w-4xl mx-auto">
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 md:p-8">
-              <HowItWorksTab />
-            </div>
-          </div>
-        );
-      case 'getstarted':
-        return (
-          <div className="max-w-4xl mx-auto">
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 md:p-8">
-              <GetStartedTab onSwitchToUpload={() => setCurrentPage('home')} />
-            </div>
-          </div>
-        );
-      default:
-        return <FileProcessor />;
-    }
-  };
-
-  return (
-    <Layout>
-      {renderPage()}
-    </Layout>
-  );
+  const { currentPage } = useNavigation();
+  return <Layout>{currentPage === 'howitworks' ? <HowItWorks /> : <FileProcessor />}</Layout>;
 }
 
 function App() {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <NavigationProvider>
-          <AppContent />
-          <Toaster />
-        </NavigationProvider>
-      </ToastProvider>
-    </ThemeProvider>
+    <MotionConfig reducedMotion="user">
+      <ThemeProvider>
+        <ToastProvider>
+          <NavigationProvider>
+            <AppContent />
+          </NavigationProvider>
+        </ToastProvider>
+      </ThemeProvider>
+    </MotionConfig>
   );
 }
 
