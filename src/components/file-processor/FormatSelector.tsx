@@ -1,16 +1,19 @@
 import React from 'react';
 import * as SelectPrimitive from '@radix-ui/react-select';
 import { ChevronDown } from 'lucide-react';
+import { FormatOption } from '../../formats';
 
 interface FormatSelectorProps {
   value: string;
   onChange: (value: string) => void;
+  options: FormatOption[];
   size?: 'sm' | 'md';
 }
 
 const FormatSelector: React.FC<FormatSelectorProps> = ({ 
   value, 
   onChange,
+  options,
   size = 'md'
 }) => {
   return (
@@ -31,12 +34,11 @@ const FormatSelector: React.FC<FormatSelectorProps> = ({
         >
           <SelectPrimitive.Viewport className="p-1">
             <SelectPrimitive.Group>
-              <SelectItem value="original">Keep Original</SelectItem>
-              <SelectItem value="jpg">JPG</SelectItem>
-              <SelectItem value="png">PNG</SelectItem>
-              <SelectItem value="webp">WebP</SelectItem>
-              <SelectItem value="pdf">PDF</SelectItem>
-              <SelectItem value="mp4">MP4</SelectItem>
+              {options.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
             </SelectPrimitive.Group>
           </SelectPrimitive.Viewport>
         </SelectPrimitive.Content>

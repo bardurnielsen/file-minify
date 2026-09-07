@@ -5,10 +5,18 @@ import FileUploader from './FileUploader';
 import ProcessingOptions from './ProcessingOptions';
 import ProcessingQueue from './ProcessingQueue';
 import { FileItem, FileType, ProcessingOption } from '../../types';
+import { isFormatValidFor, KEEP_ORIGINAL } from '../../formats';
 import { useFiles } from '../../hooks/useFiles';
 import { useToast } from '../ui/toaster';
 
 const API_BASE_URL = '/api';
+
+const OFFICE_TYPES: FileType[] = ['document', 'spreadsheet', 'presentation'];
+
+// Office files only ever convert (to PDF); everything else converts when an
+// explicit target format was chosen, and compresses otherwise.
+const isConversionFor = (file: FileItem) =>
+  OFFICE_TYPES.includes(file.type) || file.options.format !== KEEP_ORIGINAL.value;
 
 const FileProcessor: React.FC = () => {
   const { files, addFiles, removeFile, updateFile, clearFiles } = useFiles();
@@ -52,7 +60,9 @@ const FileProcessor: React.FC = () => {
         else if (fileData.mimetype.includes('video')) type = 'video';
         else if (fileData.mimetype.includes('pdf')) type = 'pdf';
         else if (fileData.mimetype.includes('word')) type = 'document';
-        else if (fileData.mimetype.includes('excel')) type = 'spreadsheet';
+        else if (fileData.mimetype.includes('excel') || fileData.mimetype.includes('spreadsheetml')) type = 'spreadsheet';
+        else if (fileData.mimetype.includes('powerpoint') || fileData.mimetype.includes('presentationml')) type = 'presentation';
+        else if (fileData.mimetype.includes('wordprocessingml')) type = 'document';
 
         // Match by index since files are uploaded in the same order
         const originalFile = acceptedFiles[index];
@@ -68,7 +78,12 @@ const FileProcessor: React.FC = () => {
           type,
           status: 'idle',
           progress: 0,
-          options: { ...globalOptions },
+          options: {
+            ...globalOptions,
+            format: isFormatValidFor(globalOptions.format, type, fileData.originalName)
+              ? globalOptions.format
+              : KEEP_ORIGINAL.value,
+          },
         };
       });
 
@@ -101,12 +116,9 @@ const FileProcessor: React.FC = () => {
       try {
         updateFile(file.id, { status: 'processing', progress: 0 });
 
-        // Determine endpoint based on file type and desired format
-        const isConversion = (file.type === 'document' || file.type === 'spreadsheet') ||
-          (file.type === 'image' && file.options.format === 'pdf') ||
-          (file.type === 'pdf' && ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(file.options.format)) ||
-          (file.type === 'image' && ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(file.options.format) && file.options.format !== 'original');
-        const endpoint = isConversion ? '/conversion' : '/compression';
+        // The selector only offers formats that differ from the source, so any
+        // explicit choice is a conversion. Office files always convert to PDF.
+        const endpoint = isConversionFor(file) ? '/conversion' : '/compression';
 
         const response = await fetch(`${API_BASE_URL}${endpoint}/${file.id}`, {
           method: 'POST',
@@ -160,11 +172,9 @@ const FileProcessor: React.FC = () => {
       const file = files.find(f => f.id === fileId);
       if (!file) return;
 
-      // Determine download endpoint based on file type and format
-      const isConversion = (file.type === 'document' || file.type === 'spreadsheet') ||
-        (file.type === 'image' && file.options.format === 'pdf') ||
-        (file.type === 'pdf' && ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(file.options.format)) ||
-        (file.type === 'image' && ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(file.options.format) && file.options.format !== 'original');
+      // Must match the routing used to process the file, or the download hits
+      // the wrong route.
+      const isConversion = isConversionFor(file);
       const endpoint = isConversion ? '/conversion/download' : '/compression/download';
 
       const response = await fetch(`${API_BASE_URL}${endpoint}/${processedId}`);

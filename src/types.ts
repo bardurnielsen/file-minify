@@ -1,4 +1,4 @@
-export type FileType = 'image' | 'video' | 'pdf' | 'document' | 'spreadsheet' | 'other';
+export type FileType = 'image' | 'video' | 'pdf' | 'document' | 'spreadsheet' | 'presentation' | 'other';
 export type FileStatus = 'idle' | 'processing' | 'completed' | 'error';
 
 export interface ProcessingOption {
