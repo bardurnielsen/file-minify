@@ -1,11 +1,21 @@
-FROM node:18-alpine
+FROM node:18-bookworm-slim
 
 # Install dependencies for file processing
-RUN apk add --no-cache \
+# (Debian base: Alpine's libreoffice package has unsatisfiable deps)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
-    libreoffice \
     ghostscript \
-    imagemagick
+    imagemagick \
+    libreoffice-writer \
+    libreoffice-calc \
+    libreoffice-impress \
+    fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
+
+# ImageMagick's Debian policy blocks reading/writing PDFs by default,
+# which the image<->PDF conversion routes rely on
+RUN sed -i 's/rights="none" pattern="PDF"/rights="read|write" pattern="PDF"/' \
+    /etc/ImageMagick-6/policy.xml
 
 # Create app directory
 WORKDIR /app
