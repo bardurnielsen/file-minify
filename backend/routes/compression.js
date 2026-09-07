@@ -173,7 +173,21 @@ router.post('/:id', async (req, res, next) => {
     
     // Get file stats
     const originalStats = fs.statSync(filePath);
-    const compressedStats = fs.statSync(outputPath);
+    let compressedStats = fs.statSync(outputPath);
+
+    // Re-encoding already-compressed input can produce a larger file. When the
+    // result is no smaller and the format is unchanged, keep the original.
+    const sameExt = (a, b) => {
+      const norm = e => (e === '.jpg' ? '.jpeg' : e);
+      return norm(a) === norm(b);
+    };
+    if (compressedStats.size >= originalStats.size &&
+        sameExt(path.extname(outputPath).toLowerCase(), fileExt)) {
+      logger.info(`Compression inflated ${path.basename(filePath)}; keeping original`);
+      fs.unlinkSync(outputPath);
+      outputPath = filePath;
+      compressedStats = originalStats;
+    }
     
     res.status(200).json({
       success: true,
