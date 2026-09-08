@@ -1,12 +1,8 @@
 const path = require('path');
 const fs = require('fs');
-const { exec } = require('child_process');
-const { promisify } = require('util');
 const { AppError } = require('../middleware/errorHandler');
 const logger = require('./logger');
-const { RUN } = require('./run');
-
-const execPromise = promisify(exec);
+const { run } = require('./run');
 
 const OFFICE_EXTS = ['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt'];
 const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
@@ -29,9 +25,10 @@ const convertOfficeToPDF = (filePath, outDir = path.dirname(filePath)) =>
   withOfficeLock(async () => {
     const outputPath = path.join(outDir, `${path.basename(filePath, path.extname(filePath))}.pdf`);
     try {
-      const cmd = `libreoffice --headless --convert-to pdf --outdir "${outDir}" "${filePath}"`;
-      logger.info(`Executing conversion command: ${cmd}`);
-      const { stdout, stderr } = await execPromise(cmd, RUN);
+      logger.info(`Converting ${filePath} to PDF in ${outDir}`);
+      const { stdout, stderr } = await run('libreoffice', [
+        '--headless', '--convert-to', 'pdf', '--outdir', outDir, filePath,
+      ]);
       if (stdout) logger.info(`LibreOffice stdout: ${stdout}`);
       if (stderr) logger.warn(`LibreOffice stderr: ${stderr}`);
       if (!fs.existsSync(outputPath)) {
@@ -55,7 +52,7 @@ const convertImageToPDF = async (
   const outputPath = path.join(outDir, `${path.basename(filePath, path.extname(filePath))}.pdf`);
   try {
     const input = firstFrameOnly ? `${filePath}[0]` : filePath;
-    await execPromise(`convert "${input}" "${outputPath}"`, RUN);
+    await run('convert', [input, outputPath]);
     if (!fs.existsSync(outputPath)) {
       throw new Error('Conversion failed: Output file not found');
     }

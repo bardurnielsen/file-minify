@@ -16,7 +16,9 @@ const ALLOWED_TYPES = {
   'image/png': ['.png'],
   'image/gif': ['.gif'],
   'image/webp': ['.webp'],
-  'image/svg+xml': ['.svg'],
+  // SVG is deliberately absent: no route can compress, convert or merge one
+  // (see IMAGE_EXTS and PDF_SOURCE_EXTS), and the frontend already drops it
+  // from ACCEPT, so allowing the upload only leaves a dead file in temp/.
   // Videos
   'video/mp4': ['.mp4'],
   'video/webm': ['.webm'],
