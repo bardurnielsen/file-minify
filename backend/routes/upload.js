@@ -4,7 +4,58 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const { AppError } = require('../middleware/errorHandler');
+const { isSafeId } = require('../utils/safeId');
 const router = express.Router();
+
+// Accepted MIME types, each mapped to the extensions it may be stored under.
+// The first entry is the canonical one, used when the client's own filename
+// carries an extension we don't recognise for that type.
+const ALLOWED_TYPES = {
+  // Images
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'image/png': ['.png'],
+  'image/gif': ['.gif'],
+  'image/webp': ['.webp'],
+  'image/svg+xml': ['.svg'],
+  // Videos
+  'video/mp4': ['.mp4'],
+  'video/webm': ['.webm'],
+  'video/quicktime': ['.mov'],
+  'video/x-msvideo': ['.avi'],
+  // PDFs
+  'application/pdf': ['.pdf'],
+  // Documents
+  'application/msword': ['.doc'],
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+  // Spreadsheets
+  'application/vnd.ms-excel': ['.xls'],
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+  // Presentations
+  'application/vnd.ms-powerpoint': ['.ppt'],
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx']
+};
+
+// Stored names are interpolated into shell commands further down the pipeline
+// (ffmpeg, gs, convert, libreoffice), so nothing from originalname may reach
+// disk verbatim: the extension is picked from the table above, never copied.
+const safeExtFor = (file) => {
+  const allowed = Object.prototype.hasOwnProperty.call(ALLOWED_TYPES, file.mimetype)
+    ? ALLOWED_TYPES[file.mimetype]
+    : [];
+  const claimed = path.extname(file.originalname).toLowerCase();
+  return allowed.includes(claimed) ? claimed : allowed[0];
+};
+
+// MAX_FILE_SIZE is set as a human-readable string ("50MB") in Docker, but
+// multer needs bytes and silently ignores a limit it cannot compare against.
+const parseSize = (value, fallback) => {
+  const match = String(value ?? '').trim().match(/^(\d+(?:\.\d+)?)\s*(b|k|kb|m|mb|g|gb)?$/i);
+  if (!match) return fallback;
+  const units = { b: 1, k: 1024, kb: 1024, m: 1024 ** 2, mb: 1024 ** 2, g: 1024 ** 3, gb: 1024 ** 3 };
+  const bytes = Math.floor(parseFloat(match[1]) * units[(match[2] || 'b').toLowerCase()]);
+  // multer treats 0 as a real limit of zero, which would reject every upload.
+  return bytes > 0 ? bytes : fallback;
+};
 
 // Configure multer storage
 const storage = multer.diskStorage({
@@ -12,34 +63,13 @@ const storage = multer.diskStorage({
     cb(null, path.join(__dirname, '../temp'));
   },
   filename: (req, file, cb) => {
-    // Generate unique filename with extension only to avoid encoding issues
-    const ext = path.extname(file.originalname);
-    const uniqueFilename = `${uuidv4()}${ext}`;
-    cb(null, uniqueFilename);
+    cb(null, `${uuidv4()}${safeExtFor(file)}`);
   }
 });
 
 // File filter to validate file types
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = [
-    // Images
-    'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
-    // Videos
-    'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo',
-    // PDFs
-    'application/pdf',
-    // Documents
-    'application/msword', 
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    // Spreadsheets
-    'application/vnd.ms-excel', 
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    // Presentations
-    'application/vnd.ms-powerpoint',
-    'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-  ];
-
-  if (allowedTypes.includes(file.mimetype)) {
+  if (Object.prototype.hasOwnProperty.call(ALLOWED_TYPES, file.mimetype)) {
     cb(null, true);
   } else {
     cb(new AppError(`Unsupported file type: ${file.mimetype}`, 400), false);
@@ -51,7 +81,7 @@ const upload = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: process.env.MAX_FILE_SIZE || 52428800, // 50MB default
+    fileSize: parseSize(process.env.MAX_FILE_SIZE, 52428800), // 50MB default
   }
 }).array('files', 10);
 
@@ -112,6 +142,12 @@ router.post('/', (req, res) => {
 router.delete('/:id', (req, res) => {
   try {
     const { id } = req.params;
+    if (!isSafeId(id)) {
+      return res.status(404).json({
+        success: false,
+        error: 'File not found'
+      });
+    }
     const filePath = path.join(__dirname, '../temp', id);
     
     // Check if file exists
