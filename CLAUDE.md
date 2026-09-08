@@ -100,7 +100,14 @@ check. No test framework is configured.
 
 ## Testing
 
-No unit tests. There is an API smoke suite covering upload, compression,
-conversion and error handling at `/home/bn/.cache/fm-test/smoke4001.sh` (targets
-:4001), with fixtures beside it. `curl` needs an explicit `;type=<mime>` on `-F`
-uploads or the MIME allowlist rejects the file.
+No unit tests. There is an API smoke suite at `backend/test/smoke.sh`, with
+fixtures beside it. It needs the stack running and defaults to :4001; pass a
+base URL to point it elsewhere. It exits non-zero on failure.
+
+It covers upload, compression, conversion, error handling, and a security block
+pinning the bugs fixed in `1f27b28` — format injection, `id` path traversal on
+the download and delete routes, MIME rejection, and the upload size cap. Those
+last cases are regression tests: if one starts failing, a hole has reopened.
+
+`curl` needs an explicit `;type=<mime>` on `-F` uploads or the MIME allowlist
+rejects the file.
