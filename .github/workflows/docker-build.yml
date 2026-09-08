@@ -1,4 +1,4 @@
-name: Docker Build
+name: CI
 
 on:
   push:
@@ -35,3 +35,31 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The backend is the only service the suite talks to; the frontend is
+      # covered by the build job above.
+      - name: Start backend
+        run: docker compose up -d --build backend
+
+      - name: Wait for /health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:4001/health; then exit 0; fi
+            sleep 2
+          done
+          echo "backend never became healthy"
+          docker compose logs backend
+          exit 1
+
+      - name: Smoke test
+        run: ./backend/test/smoke.sh
+
+      - name: Backend logs on failure
+        if: failure()
+        run: docker compose logs backend

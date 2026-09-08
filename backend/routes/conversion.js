@@ -1,14 +1,13 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const { exec } = require('child_process');
-const { promisify } = require('util');
 const { AppError } = require('../middleware/errorHandler');
+const { isSafeId } = require('../utils/safeId');
+const { run } = require('../utils/run');
 const logger = require('../utils/logger');
 const { convertOfficeToPDF, convertImageToPDF } = require('../utils/converters');
 
 const router = express.Router();
-const execPromise = promisify(exec);
 
 // Convert image to another format
 const convertImage = async (filePath, format) => {
@@ -23,7 +22,7 @@ const convertImage = async (filePath, format) => {
     let sharpInstance = sharp(filePath);
     
     // Use the correct Sharp format methods
-    switch (format.toLowerCase()) {
+    switch (format) {
       case 'jpg':
       case 'jpeg':
         sharpInstance = sharpInstance.jpeg();
@@ -62,9 +61,8 @@ const convertVideo = async (filePath, format) => {
   
   try {
     // -y is required: without it FFmpeg prompts before overwriting an existing
-    // output and blocks forever, since exec() gives it no stdin to answer from.
-    const cmd = `ffmpeg -y -i "${filePath}" "${outputPath}"`;
-    await execPromise(cmd);
+    // output and blocks forever, since it has no stdin to answer from.
+    await run('ffmpeg', ['-y', '-i', filePath, outputPath]);
     return outputPath;
   } catch (error) {
     logger.error('Video conversion failed', error);
@@ -81,8 +79,7 @@ const convertPDFToImage = async (filePath, format) => {
   
   try {
     // Use ImageMagick to convert PDF to image (first page only)
-    const cmd = `convert "${filePath}[0]" "${outputPath}"`;
-    await execPromise(cmd);
+    await run('convert', [`${filePath}[0]`, outputPath]);
     
     // Check if the output file exists
     if (!fs.existsSync(outputPath)) {
@@ -100,12 +97,18 @@ const convertPDFToImage = async (filePath, format) => {
 router.post('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
+    if (!isSafeId(id)) {
+      throw new AppError('File not found', 404);
+    }
     let { format } = req.body;
     
     // If body contains options object, extract format from it
     if (req.body.options && req.body.options.format) {
       format = req.body.options.format;
     }
+    // Normalise once. A non-string format used to reach .toLowerCase() and come
+    // back as a 500; it is an unsupported format, which is a 400.
+    format = typeof format === 'string' ? format : '';
     
     // Default to PDF for office documents if format is 'original' or not specified
     const filePath = path.join(__dirname, '../temp', id);
@@ -132,32 +135,32 @@ router.post('/:id', async (req, res, next) => {
     
     if (['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt'].includes(fileExt)) {
       // Office to PDF conversion
-      if (format.toLowerCase() !== 'pdf') {
+      if (format !== 'pdf') {
         throw new AppError('Office documents can only be converted to PDF', 400);
       }
       outputPath = await convertOfficeToPDF(filePath);
     } else if (['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(fileExt)) {
       // Image conversion
-      if (format.toLowerCase() === 'pdf') {
+      if (format === 'pdf') {
         // Convert image to PDF
         outputPath = await convertImageToPDF(filePath);
-      } else if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(format.toLowerCase())) {
+      } else if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(format)) {
         // Convert image to another image format
-        outputPath = await convertImage(filePath, format.toLowerCase());
+        outputPath = await convertImage(filePath, format);
       } else {
         throw new AppError('Unsupported image format', 400);
       }
     } else if (['.mp4', '.webm', '.mov', '.avi'].includes(fileExt)) {
       // Video conversion
-      if (!['mp4', 'webm', 'mov', 'avi'].includes(format.toLowerCase())) {
+      if (!['mp4', 'webm', 'mov', 'avi'].includes(format)) {
         throw new AppError('Unsupported video format', 400);
       }
-      outputPath = await convertVideo(filePath, format.toLowerCase());
+      outputPath = await convertVideo(filePath, format);
     } else if (fileExt === '.pdf') {
       // PDF conversion
-      if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(format.toLowerCase())) {
+      if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(format)) {
         // Convert PDF to image
-        outputPath = await convertPDFToImage(filePath, format.toLowerCase());
+        outputPath = await convertPDFToImage(filePath, format);
       } else {
         throw new AppError('PDFs can only be converted to image formats (JPG, PNG, WebP, GIF)', 400);
       }
@@ -176,7 +179,7 @@ router.post('/:id', async (req, res, next) => {
         originalSize: originalStats.size,
         convertedSize: convertedStats.size,
         originalFormat: path.extname(filePath).replace('.', ''),
-        newFormat: format.toLowerCase()
+        newFormat: format
       }
     });
   } catch (error) {
@@ -188,6 +191,9 @@ router.post('/:id', async (req, res, next) => {
 router.get('/download/:id', (req, res, next) => {
   try {
     const { id } = req.params;
+    if (!isSafeId(id)) {
+      throw new AppError('File not found', 404);
+    }
     const filePath = path.join(__dirname, '../temp', id);
     
     // Check if file exists

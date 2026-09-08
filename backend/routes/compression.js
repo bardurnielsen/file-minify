@@ -3,27 +3,37 @@ const path = require('path');
 const fs = require('fs');
 const sharp = require('sharp');
 const { PDFDocument } = require('pdf-lib');
-const { exec } = require('child_process');
-const { promisify } = require('util');
 const { AppError } = require('../middleware/errorHandler');
+const { isSafeId } = require('../utils/safeId');
+const { run } = require('../utils/run');
 const logger = require('../utils/logger');
 
 const router = express.Router();
-const execPromise = promisify(exec);
 
 // The UI sends 'original' to mean "keep the source format". Resolve it to the
 // source extension so it never lands in a filename or an encoder as a literal.
-const resolveFormat = (filePath, format) => {
-  if (!format || format === 'original') {
-    return path.extname(filePath).slice(1).toLowerCase();
+// Resolved formats become part of an output filename that is interpolated into
+// ffmpeg's command line, so only known-good ones are allowed through. The lists
+// are per encoder: a format the other one handles is still a 400 here, not a
+// 500 from inside Sharp or ffmpeg. The rejected value is never echoed back -
+// it is client-controlled and would otherwise reach the log verbatim.
+const IMAGE_FORMATS = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+const VIDEO_FORMATS = ['mp4', 'webm', 'mov', 'avi'];
+
+const resolveFormat = (filePath, format, allowed) => {
+  const resolved = !format || format === 'original'
+    ? path.extname(filePath).slice(1).toLowerCase()
+    : String(format).toLowerCase();
+  if (!allowed.includes(resolved)) {
+    throw new AppError('Unsupported output format for this file type', 400);
   }
-  return format.toLowerCase();
+  return resolved;
 };
 
 // Compress image file
 const compressImage = async (filePath, options) => {
   const { quality = 80, format: rawFormat = 'jpeg', maxSize } = options;
-  const format = resolveFormat(filePath, rawFormat);
+  const format = resolveFormat(filePath, rawFormat, IMAGE_FORMATS);
   const outputPath = path.join(
     path.dirname(filePath),
     `compressed-${path.basename(filePath).split('.')[0]}.${format}`
@@ -84,9 +94,12 @@ const compressPDF = async (filePath, options) => {
                           quality === 'high' ? qualitySettings.high : 
                           qualitySettings.medium;
                           
-    const cmd = `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dNOPAUSE -dQUIET -dBATCH ${qualitySetting.join(' ')} -sOutputFile="${outputPath}" "${filePath}"`;
-    
-    await execPromise(cmd);
+    await run('gs', [
+      '-sDEVICE=pdfwrite', '-dCompatibilityLevel=1.4', '-dNOPAUSE', '-dQUIET', '-dBATCH',
+      ...qualitySetting,
+      `-sOutputFile=${outputPath}`,
+      filePath,
+    ]);
     return outputPath;
   } catch (error) {
     logger.error('PDF compression failed', error);
@@ -97,7 +110,7 @@ const compressPDF = async (filePath, options) => {
 // Compress video file
 const compressVideo = async (filePath, options) => {
   const { quality = 'medium', format: rawFormat = 'mp4', maxSize } = options;
-  const format = resolveFormat(filePath, rawFormat);
+  const format = resolveFormat(filePath, rawFormat, VIDEO_FORMATS);
   const outputPath = path.join(
     path.dirname(filePath),
     `compressed-${path.basename(filePath).split('.')[0]}.${format}`
@@ -116,9 +129,13 @@ const compressVideo = async (filePath, options) => {
                    qualitySettings.medium;
     
     // -y is required: without it FFmpeg prompts before overwriting an existing
-    // output (including /dev/null below) and blocks forever, since exec() gives
-    // it no stdin to answer from.
-    let cmd = `ffmpeg -y -i "${filePath}" -c:v libx264 -crf ${setting.crf} -preset ${setting.preset} -c:a aac -b:a 128k "${outputPath}"`;
+    // output (including /dev/null below) and blocks forever, since it has no
+    // stdin to answer from.
+    let passes = [[
+      '-y', '-i', filePath,
+      '-c:v', 'libx264', '-crf', setting.crf, '-preset', setting.preset,
+      '-c:a', 'aac', '-b:a', '128k', outputPath,
+    ]];
     let passLog = null;
     
     // If max size is specified, use two-pass encoding to target file size
@@ -134,12 +151,20 @@ const compressVideo = async (filePath, options) => {
         `passlog-${path.basename(filePath, path.extname(filePath))}`
       );
       
-      cmd = `ffmpeg -y -i "${filePath}" -c:v libx264 -b:v ${bitrate}k -pass 1 -passlogfile "${passLog}" -f mp4 /dev/null && ` +
-            `ffmpeg -y -i "${filePath}" -c:v libx264 -b:v ${bitrate}k -pass 2 -passlogfile "${passLog}" -c:a aac -b:a 128k "${outputPath}"`;
+      // Was one shell string joined by &&; awaiting in sequence keeps the same
+      // stop-on-failure behaviour without a shell to do the chaining.
+      passes = [
+        ['-y', '-i', filePath, '-c:v', 'libx264', '-b:v', `${bitrate}k`,
+         '-pass', '1', '-passlogfile', passLog, '-f', 'mp4', '/dev/null'],
+        ['-y', '-i', filePath, '-c:v', 'libx264', '-b:v', `${bitrate}k`,
+         '-pass', '2', '-passlogfile', passLog, '-c:a', 'aac', '-b:a', '128k', outputPath],
+      ];
     }
     
     try {
-      await execPromise(cmd);
+      for (const args of passes) {
+        await run('ffmpeg', args);
+      }
     } finally {
       if (passLog) {
         for (const scratch of [`${passLog}-0.log`, `${passLog}-0.log.mbtree`]) {
@@ -156,7 +181,10 @@ const compressVideo = async (filePath, options) => {
 
 // Helper function to get video duration
 const getVideoDuration = async (filePath) => {
-  const { stdout } = await execPromise(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`);
+  const { stdout } = await run('ffprobe', [
+    '-v', 'error', '-show_entries', 'format=duration',
+    '-of', 'default=noprint_wrappers=1:nokey=1', filePath,
+  ]);
   return parseFloat(stdout.trim());
 };
 
@@ -164,6 +192,9 @@ const getVideoDuration = async (filePath) => {
 router.post('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
+    if (!isSafeId(id)) {
+      throw new AppError('File not found', 404);
+    }
     const { quality, format, maxSize } = req.body;
     
     const filePath = path.join(__dirname, '../temp', id);
@@ -177,7 +208,7 @@ router.post('/:id', async (req, res, next) => {
     const fileExt = path.extname(filePath).toLowerCase();
     let outputPath;
     
-    if (['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(fileExt)) {
+    if (IMAGE_FORMATS.map(e => `.${e}`).includes(fileExt)) {
       // Image compression
       outputPath = await compressImage(filePath, { 
         quality: parseInt(quality) || 80, 
@@ -189,7 +220,7 @@ router.post('/:id', async (req, res, next) => {
       outputPath = await compressPDF(filePath, { 
         quality: quality || 'medium'
       });
-    } else if (['.mp4', '.webm', '.mov', '.avi'].includes(fileExt)) {
+    } else if (VIDEO_FORMATS.map(e => `.${e}`).includes(fileExt)) {
       // Video compression
       outputPath = await compressVideo(filePath, {
         quality: quality || 'medium',
@@ -237,6 +268,9 @@ router.post('/:id', async (req, res, next) => {
 router.get('/download/:id', (req, res, next) => {
   try {
     const { id } = req.params;
+    if (!isSafeId(id)) {
+      throw new AppError('File not found', 404);
+    }
     const filePath = path.join(__dirname, '../temp', id);
     
     // Check if file exists
