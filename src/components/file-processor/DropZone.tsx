@@ -66,7 +66,8 @@ export const DropHero: React.FC<HeroProps> = ({
       </h2>
       <p className="mt-2 max-w-md text-[15px] leading-relaxed text-zinc-500 dark:text-zinc-400">
         Images, video, PDF and Office documents, up to 50 MB each. Sensible
-        settings are picked for you and processing starts on its own.
+        settings are picked for you. Drop several and you can also merge them
+        into a single PDF.
       </p>
 
       <span className="mt-7 inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-800 shadow-sm transition-colors group-hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100">

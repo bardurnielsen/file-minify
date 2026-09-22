@@ -346,8 +346,9 @@ const FileProcessor: React.FC = () => {
           Smaller files. Nothing to fiddle with.
         </h1>
         <p className="mx-auto mt-3 max-w-lg text-[15px] leading-relaxed text-zinc-500 dark:text-zinc-400">
-          Compress images, video and PDFs, or turn Office documents into PDFs. Good defaults
-          are chosen for you; every setting is still one click away.
+          Compress images, video and PDFs, turn Office documents into PDFs, or merge several
+          files into one PDF in the order you choose. Good defaults are chosen for you; every
+          setting is still one click away.
         </p>
       </div>
 

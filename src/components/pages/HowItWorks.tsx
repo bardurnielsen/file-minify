@@ -43,6 +43,21 @@ const SHRINKS: Record<FileType, string> = {
   other: '–',
 };
 
+const MERGE_POINTS = [
+  {
+    title: 'Set the order',
+    body: 'Drag files into place, or use the arrows. The PDF follows that order, page by page.',
+  },
+  {
+    title: 'Mix file types',
+    body: 'Photos, scans, PDFs and Word, Excel or PowerPoint files all go in. Each becomes PDF pages first.',
+  },
+  {
+    title: 'Leave some out',
+    body: 'Skip any file you don’t want, and name the result before you download it.',
+  },
+];
+
 // What each level means for video, where it also sets the resolution.
 const VIDEO_TIER: Record<Tier, string> = {
   small: 'Video: up to 720p.',
@@ -98,6 +113,27 @@ const HowItWorks: React.FC = () => {
             </div>
           ))}
         </dl>
+      </section>
+
+      <section>
+        <h2 className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+          Merge into one PDF
+        </h2>
+        <p className="mt-1 max-w-xl text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+          Add two or more images, PDFs or Office documents and a <strong className="font-medium text-zinc-700 dark:text-zinc-200">Merge to PDF</strong>{' '}
+          button appears above the list.
+        </p>
+        <ul className="mt-4 grid gap-3 sm:grid-cols-3">
+          {MERGE_POINTS.map((point) => (
+            <li
+              key={point.title}
+              className="rounded-xl border border-zinc-200/80 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900"
+            >
+              <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">{point.title}</div>
+              <div className="mt-0.5 text-[13px] text-zinc-500 dark:text-zinc-400">{point.body}</div>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <section>
@@ -165,9 +201,6 @@ const HowItWorks: React.FC = () => {
             can&apos;t open it. H.264 is the default for that reason.
           </li>
           <li>Video is never enlarged. Choosing 1080p for a 720p clip leaves it at 720p.</li>
-          <li>
-            Images, PDFs and Office files can be merged into one PDF, in the order you choose.
-          </li>
           <li>Converting to another format uses that encoder&apos;s standard quality.</li>
           <li>Files are deleted from the server within an hour. Nothing is kept.</li>
         </ul>
