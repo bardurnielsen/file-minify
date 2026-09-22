@@ -1,7 +1,7 @@
 import React from 'react';
 import { ArrowDown, Download, Wand2 } from 'lucide-react';
 import { targetsFor } from '../../formats';
-import { FileType } from '../../types';
+import { FileType, Tier } from '../../types';
 import { TIERS, TYPE_LABEL } from '../../processing';
 import { Button } from '../ui/button';
 import { useNavigation } from '../../contexts/NavigationContext';
@@ -15,7 +15,7 @@ const STEPS = [
   {
     icon: Wand2,
     title: 'We pick the settings',
-    body: 'Each file type gets the treatment that suits it. Office files become PDFs, everything else is shrunk in its own format. Adjust any file afterwards if you want something different.',
+    body: 'Office files become PDFs, everything else is shrunk in its own format. Videos wait for a click, so you can aim for a file size or resolution first.',
   },
   {
     icon: Download,
@@ -35,12 +35,19 @@ const SOURCES: { type: FileType; from: string }[] = [
 
 const SHRINKS: Record<FileType, string> = {
   image: 'Re-encoded at the chosen quality',
-  video: 'H.264 at the chosen quality, or aimed at a target size',
+  video: 'H.264 or H.265 at the chosen quality and resolution, or aimed at a target size',
   pdf: 'Images inside downsampled with Ghostscript',
   document: '–',
   spreadsheet: '–',
   presentation: '–',
   other: '–',
+};
+
+// What each level means for video, where it also sets the resolution.
+const VIDEO_TIER: Record<Tier, string> = {
+  small: 'Video: up to 720p.',
+  balanced: 'Video: up to 1080p.',
+  high: 'Video: original resolution.',
 };
 
 const HowItWorks: React.FC = () => {
@@ -50,8 +57,9 @@ const HowItWorks: React.FC = () => {
       <header>
         <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">How it works</h1>
         <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-zinc-500 dark:text-zinc-400">
-          There is nothing to configure. Drop a file and it comes back smaller; the controls are
-          there for the times you need them.
+          Drop a file and it comes back smaller. Images, PDFs and documents start straight away;
+          videos wait for a click, so you can aim for a size first. The controls are there for the
+          times you need them.
         </p>
       </header>
 
@@ -86,6 +94,7 @@ const HowItWorks: React.FC = () => {
             >
               <dt className="text-sm font-medium text-zinc-900 dark:text-zinc-50">{tier.label}</dt>
               <dd className="mt-0.5 text-[13px] text-zinc-500 dark:text-zinc-400">{tier.hint}</dd>
+              <dd className="mt-1.5 text-xs text-zinc-400 dark:text-zinc-500">{VIDEO_TIER[tier.value]}</dd>
             </div>
           ))}
         </dl>
@@ -145,8 +154,19 @@ const HowItWorks: React.FC = () => {
             says &ldquo;Already compact&rdquo;. That is a result, not a failure.
           </li>
           <li>
-            For video you can aim at a file size instead of a quality level. The encoder then
-            chooses the bitrate to hit that size, so the quality setting no longer applies.
+            For video you can aim at a file size instead of a quality level - handy for fitting a
+            clip into an email. The encoder then chooses the bitrate to hit that size, so the
+            quality setting no longer applies, and unless you pick one, the resolution is lowered
+            to suit: a clean 720p picture beats a blocky 1080p one.
+          </li>
+          <li>
+            H.265 makes video around a quarter smaller than H.264 at the same quality, but takes
+            longer to encode and doesn&apos;t play everywhere - some browsers and older devices
+            can&apos;t open it. H.264 is the default for that reason.
+          </li>
+          <li>Video is never enlarged. Choosing 1080p for a 720p clip leaves it at 720p.</li>
+          <li>
+            Images, PDFs and Office files can be merged into one PDF, in the order you choose.
           </li>
           <li>Converting to another format uses that encoder&apos;s standard quality.</li>
           <li>Files are deleted from the server within an hour. Nothing is kept.</li>
