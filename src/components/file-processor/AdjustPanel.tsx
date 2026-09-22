@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { FileItem, ProcessingOption, Tier } from '../../types';
+import React, { useEffect, useState } from 'react';
+import { FileItem, ProcessingOption, Tier, VideoCodec, VideoResolution } from '../../types';
 import { formatsFor, KEEP_ORIGINAL } from '../../formats';
-import { imageQualityFor, isOffice, sameRequest } from '../../processing';
+import { canUseHevc, imageQualityFor, isOffice, sameRequest } from '../../processing';
+import { cn } from '../../lib/format';
 import { Button } from '../ui/button';
 import FormatSelector from './FormatSelector';
 import OptionSlider from './OptionSlider';
@@ -11,6 +12,8 @@ interface AdjustPanelProps {
   file: FileItem;
   onApply: (options: ProcessingOption) => void;
   onClose: () => void;
+  /** The file is waiting for these settings before its first run. */
+  holding?: boolean;
 }
 
 const Field: React.FC<{ label: string; hint?: string; children: React.ReactNode }> = ({
@@ -33,12 +36,85 @@ const PDF_HINT: Record<Tier, string> = {
   high: 'Images inside the PDF are kept at up to 300 dpi - safe for print.',
 };
 
+const CODECS: { value: VideoCodec; label: string }[] = [
+  { value: 'h264', label: 'H.264' },
+  { value: 'h265', label: 'H.265' },
+];
+
+const CODEC_HINT: Record<VideoCodec, string> = {
+  h264: 'Plays everywhere.',
+  h265: 'Around a quarter smaller at the same quality, but slower to encode. Some browsers and older devices can’t play it.',
+};
+
+const RESOLUTIONS: { value: VideoResolution | 'auto'; label: string }[] = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'source', label: 'Original' },
+  { value: '1080', label: '1080p' },
+  { value: '720', label: '720p' },
+  { value: '480', label: '480p' },
+];
+
+const AUTO_RESOLUTION: Record<Tier, string> = {
+  small: 'Auto: up to 720p for this quality.',
+  balanced: 'Auto: up to 1080p for this quality.',
+  high: 'Auto: kept at the original size for this quality.',
+};
+
+const resolutionHint = (o: ProcessingOption) => {
+  if (o.resolution === 'source') return 'Kept at the original size.';
+  if (o.resolution) return `Shortest side at most ${o.resolution} px. Never enlarged.`;
+  return o.targetSizeMb ? 'Auto: picked to suit the target size.' : AUTO_RESOLUTION[o.tier];
+};
+
+/** A compact single-choice pill group, styled like TierControl. */
+const Segmented = <T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+}) => (
+  <div
+    role="radiogroup"
+    aria-label={label}
+    className="inline-flex max-w-full flex-wrap rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800/80"
+  >
+    {options.map((o) => {
+      const active = value === o.value;
+      return (
+        <button
+          key={o.value}
+          type="button"
+          role="radio"
+          aria-checked={active}
+          onClick={() => onChange(o.value)}
+          className={cn(
+            'h-8 rounded-lg px-3 text-[13px] font-medium transition-colors focus-ring',
+            active
+              ? 'bg-white text-zinc-900 shadow-sm dark:bg-zinc-100 dark:text-zinc-900'
+              : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
+          )}
+        >
+          {o.label}
+        </button>
+      );
+    })}
+  </div>
+);
+
 /**
  * Per-file controls. Only shows what the backend will actually honour for this
  * file type and route, so nothing here is a placebo.
  */
-const AdjustPanel: React.FC<AdjustPanelProps> = ({ file, onApply, onClose }) => {
+const AdjustPanel: React.FC<AdjustPanelProps> = ({ file, onApply, onClose, holding }) => {
   const [draft, setDraft] = useState<ProcessingOption>(file.options);
+  // A held panel stays open, so follow the toolbar's "all files" tier rather
+  // than quietly starting with what was set before it changed.
+  useEffect(() => setDraft(file.options), [file.options]);
   const patch = (p: Partial<ProcessingOption>) => setDraft((d) => ({ ...d, ...p }));
 
   const office = isOffice(file.type);
@@ -102,6 +178,28 @@ const AdjustPanel: React.FC<AdjustPanelProps> = ({ file, onApply, onClose }) => 
               </Field>
             )}
 
+            {file.type === 'video' && (
+              <Field label="Resolution" hint={resolutionHint(draft)}>
+                <Segmented
+                  label="Resolution"
+                  options={RESOLUTIONS}
+                  value={draft.resolution ?? 'auto'}
+                  onChange={(r) => patch({ resolution: r === 'auto' ? undefined : r })}
+                />
+              </Field>
+            )}
+
+            {canUseHevc(file.type, file.name) && (
+              <Field label="Codec" hint={CODEC_HINT[draft.codec ?? 'h264']}>
+                <Segmented
+                  label="Video codec"
+                  options={CODECS}
+                  value={draft.codec ?? 'h264'}
+                  onChange={(c) => patch({ codec: c === 'h264' ? undefined : c })}
+                />
+              </Field>
+            )}
+
             {canTargetSize && (
               <Field
                 label="Target size"
@@ -141,11 +239,18 @@ const AdjustPanel: React.FC<AdjustPanelProps> = ({ file, onApply, onClose }) => 
       </div>
 
       <div className="mt-5 flex items-center justify-end gap-2">
-        <Button variant="ghost" size="sm" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button variant="primary" size="sm" disabled={unchanged} onClick={() => onApply(draft)}>
-          {file.result ? 'Apply and redo' : 'Apply'}
+        {!holding && (
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+        )}
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={!holding && unchanged}
+          onClick={() => onApply(draft)}
+        >
+          {holding ? (converting ? 'Convert' : 'Compress') : file.result ? 'Apply and redo' : 'Apply'}
         </Button>
       </div>
     </div>

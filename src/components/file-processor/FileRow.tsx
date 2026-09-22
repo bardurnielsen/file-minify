@@ -24,6 +24,8 @@ interface FileRowProps {
   onDownload: () => void;
   onRemove: () => void;
   onRerun: (options?: ProcessingOption) => void;
+  /** Release a held file (see FileItem.hold) with these settings. */
+  onStart: (options: ProcessingOption) => void;
 }
 
 const TYPE_ICON: Record<FileType, React.ComponentType<{ className?: string }>> = {
@@ -96,13 +98,15 @@ const Thumb: React.FC<{ file: FileItem }> = ({ file }) => {
   );
 };
 
-const FileRow: React.FC<FileRowProps> = ({ file, onDownload, onRemove, onRerun }) => {
+const FileRow: React.FC<FileRowProps> = ({ file, onDownload, onRemove, onRerun, onStart }) => {
   const [adjusting, setAdjusting] = useState(false);
   const busy = file.status === 'uploading' || file.status === 'queued' || file.status === 'processing';
   const elapsed = useElapsedSeconds(file.startedAt, file.status === 'processing');
   const stale = isStale(file);
   const result = file.result;
   const srcExt = extensionOf(file.name).toUpperCase();
+  // A held file shows its settings from the start, while it is still uploading.
+  const showPanel = !!file.hold || (adjusting && !busy);
 
   useEffect(() => {
     if (busy) setAdjusting(false);
@@ -125,6 +129,12 @@ const FileRow: React.FC<FileRowProps> = ({ file, onDownload, onRemove, onRerun }
                 style={{ width: `${Math.max(2, file.uploadProgress * 100)}%` }}
               />
             </div>
+          </div>
+        );
+      case 'ready':
+        return (
+          <div className="text-[13px] text-zinc-500 dark:text-zinc-400">
+            Uploaded · choose settings below, then start
           </div>
         );
       case 'queued':
@@ -307,7 +317,7 @@ const FileRow: React.FC<FileRowProps> = ({ file, onDownload, onRemove, onRerun }
               Redo
             </Button>
           )}
-          {!busy && (
+          {!busy && !file.hold && (
             <Button
               variant="ghost"
               size="icon"
@@ -326,7 +336,7 @@ const FileRow: React.FC<FileRowProps> = ({ file, onDownload, onRemove, onRerun }
       </div>
 
       <AnimatePresence initial={false}>
-        {adjusting && !busy && (
+        {showPanel && (
           <motion.div
             key="adjust"
             initial={{ height: 0, opacity: 0 }}
@@ -336,10 +346,12 @@ const FileRow: React.FC<FileRowProps> = ({ file, onDownload, onRemove, onRerun }
           >
             <AdjustPanel
               file={file}
+              holding={!!file.hold}
               onClose={() => setAdjusting(false)}
               onApply={(options) => {
                 setAdjusting(false);
-                onRerun(options);
+                if (file.hold) onStart(options);
+                else onRerun(options);
               }}
             />
           </motion.div>

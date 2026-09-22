@@ -74,42 +74,119 @@ const compressImage = async (filePath, options) => {
   }
 };
 
+// Per codec and tier. x265 reaches the same quality at a higher CRF than
+// x264, so the numbers are not comparable across codecs.
+//   shortSide  the tier's default resolution cap (short side, never upscaled)
+//   ceiling    peak video bitrate as a share of the source's. CRF alone asks for
+//              a quality level, and on an already-lean source (a 4 Mbps 1080p
+//              phone clip) that level needed *more* bits than the source had, so
+//              Balanced and Best both came out larger and the original was kept.
+//              The ceiling makes every tier a real step down; on a high-bitrate
+//              source it never binds and CRF decides. x265's are a quarter
+//              lower, so on a lean source it is still the smaller codec rather
+//              than the same size at a better quality. Scaled down further
+//              when the picture is (see ceilingFor).
+const VIDEO_SETTINGS = {
+  h264: {
+    low: { crf: '28', preset: 'slow', shortSide: 720, ceiling: 0.45, audio: '96k' },
+    medium: { crf: '24', preset: 'slow', shortSide: 1080, ceiling: 0.55, audio: '128k' },
+    high: { crf: '21', preset: 'slow', ceiling: 0.8, audio: '128k' },
+  },
+  h265: {
+    low: { crf: '30', preset: 'medium', shortSide: 720, ceiling: 0.34, audio: '96k' },
+    medium: { crf: '27', preset: 'medium', shortSide: 1080, ceiling: 0.41, audio: '128k' },
+    high: { crf: '24', preset: 'medium', ceiling: 0.6, audio: '128k' },
+  },
+};
+const VIDEO_CODECS = { h264: 'libx264', h265: 'libx265' };
+// HEVC is only muxed into MP4/MOV here; WebM and AVI would reject it or play
+// nowhere.
+const HEVC_FORMATS = ['mp4', 'mov'];
+// An explicit resolution choice: a short-side cap, or 'source' for none.
+// Absent means the tier (or, with a target size, the bitrate) decides.
+const RESOLUTIONS = { source: null, 1080: 1080, 720: 720, 480: 480 };
+
+// With a target size and no explicit resolution, fit the picture to the bits:
+// a starved 1080p encode looks blockier than a clean 720p one.
+const shortSideForBitrate = (kbps) =>
+  kbps >= 5000 ? null : kbps >= 2500 ? 1080 : kbps >= 1000 ? 720 : 480;
+
+// Peak bitrate in kbps, or null when the source bitrate is unknown. Fewer
+// pixels need fewer bits, though not proportionally - hence the 0.75 power.
+const ceilingFor = (source, share, shortSide) => {
+  if (!source.videoKbps) return null;
+  const srcShort = Math.min(source.width, source.height);
+  const outShort = shortSide && srcShort ? Math.min(shortSide, srcShort) : srcShort;
+  const pixels = srcShort ? (outShort / srcShort) ** 2 : 1;
+  return Math.max(200, Math.floor(source.videoKbps * share * pixels ** 0.75));
+};
+
+// Scale so the short side is at most `max`, whichever way round the video is,
+// so a portrait phone clip is not squeezed to 405 px wide. -2 keeps the other
+// side even, which yuv420p requires.
+const capShortSide = (max) =>
+  `scale='if(gt(iw,ih),-2,min(${max},iw))':'if(gt(iw,ih),min(${max},ih),-2)'`;
+
 // Compress video file
 const compressVideo = async (filePath, options) => {
-  const { quality = 'medium', format: rawFormat = 'mp4', maxSize } = options;
+  const {
+    quality = 'medium', format: rawFormat = 'mp4', maxSize, codec = 'h264', resolution,
+  } = options;
   const format = resolveFormat(filePath, rawFormat, VIDEO_FORMATS);
+  if (!Object.hasOwn(VIDEO_CODECS, codec)) {
+    throw new AppError('Unsupported video codec', 400);
+  }
+  if (codec === 'h265' && !HEVC_FORMATS.includes(format)) {
+    throw new AppError('H.265 is only available for MP4 and MOV', 400);
+  }
+  if (resolution !== undefined &&
+      (typeof resolution !== 'string' || !Object.hasOwn(RESOLUTIONS, resolution))) {
+    throw new AppError('Unsupported resolution', 400);
+  }
   const outputPath = path.join(
     path.dirname(filePath),
     `compressed-${path.basename(filePath).split('.')[0]}.${format}`
   );
   
   try {
-    // Map quality to FFmpeg settings
-    const qualitySettings = {
-      low: { crf: '28', preset: 'faster' },
-      medium: { crf: '23', preset: 'medium' },
-      high: { crf: '18', preset: 'slow' }
-    };
-    
-    const setting = quality === 'low' ? qualitySettings.low : 
-                   quality === 'high' ? qualitySettings.high : 
-                   qualitySettings.medium;
+    const level = ['low', 'medium', 'high'].includes(quality) ? quality : 'medium';
+    const setting = VIDEO_SETTINGS[codec][level];
+    const source = await probeVideo(filePath);
+
+    // yuv420p keeps 10-bit phone footage playable: otherwise x264 writes High 10,
+    // which browsers and most phones refuse. hvc1 is the HEVC tag Apple players
+    // need; the default hev1 opens as a black screen in QuickTime and Safari.
+    const video = ['-c:v', VIDEO_CODECS[codec], '-pix_fmt', 'yuv420p'];
+    if (codec === 'h265') video.push('-tag:v', 'hvc1');
+    const x265 = (params) =>
+      codec === 'h265' ? ['-x265-params', ['log-level=error', ...params].join(':')] : [];
+    const scale = (shortSide) => (shortSide ? ['-vf', capShortSide(shortSide)] : []);
+    const chosen = resolution === undefined ? undefined : RESOLUTIONS[resolution];
+
+    const shortSide = chosen === undefined ? setting.shortSide : chosen;
+    const ceiling = ceilingFor(source, setting.ceiling, shortSide);
     
     // -y is required: without it FFmpeg prompts before overwriting an existing
     // output (including /dev/null below) and blocks forever, since it has no
     // stdin to answer from.
     let passes = [[
-      '-y', '-i', filePath,
-      '-c:v', 'libx264', '-crf', setting.crf, '-preset', setting.preset,
-      '-c:a', 'aac', '-b:a', '128k', outputPath,
+      '-y', '-i', filePath, ...video,
+      ...x265([]), '-crf', setting.crf, '-preset', setting.preset,
+      ...(ceiling ? ['-maxrate', `${ceiling}k`, '-bufsize', `${ceiling * 2}k`] : []),
+      ...scale(shortSide),
+      '-c:a', 'aac', '-b:a', setting.audio, outputPath,
     ]];
     let passLog = null;
     
     // If max size is specified, use two-pass encoding to target file size
     if (maxSize) {
       const targetSize = maxSize * 1024; // Convert MB to KB
-      const duration = await getVideoDuration(filePath);
-      const bitrate = Math.floor((targetSize * 8) / duration);
+      if (!source.duration) throw new Error('Could not read the video duration');
+      // The target covers the whole file, so the audio's share comes off the
+      // video bitrate; otherwise every result overshot by 128 kbps x duration.
+      const audioKbps = 128;
+      const bitrate = Math.max(100, Math.floor((targetSize * 8) / source.duration) - audioKbps);
+      const fitted = chosen === undefined ? shortSideForBitrate(bitrate) : chosen;
       
       // Each job needs its own pass log. FFmpeg defaults to ffmpeg2pass-0.log in
       // the working directory, so concurrent jobs would corrupt each other.
@@ -119,12 +196,16 @@ const compressVideo = async (filePath, options) => {
       );
       
       // Was one shell string joined by &&; awaiting in sequence keeps the same
-      // stop-on-failure behaviour without a shell to do the chaining.
+      // stop-on-failure behaviour without a shell to do the chaining. x265 takes
+      // its pass options through -x265-params rather than -pass/-passlogfile.
+      const pass = (n) => codec === 'h265'
+        ? x265([`pass=${n}`, `stats=${passLog}.log`])
+        : ['-pass', String(n), '-passlogfile', passLog];
       passes = [
-        ['-y', '-i', filePath, '-c:v', 'libx264', '-b:v', `${bitrate}k`,
-         '-pass', '1', '-passlogfile', passLog, '-f', 'mp4', '/dev/null'],
-        ['-y', '-i', filePath, '-c:v', 'libx264', '-b:v', `${bitrate}k`,
-         '-pass', '2', '-passlogfile', passLog, '-c:a', 'aac', '-b:a', '128k', outputPath],
+        ['-y', '-i', filePath, ...video, '-b:v', `${bitrate}k`, ...scale(fitted),
+         ...pass(1), '-an', '-f', 'mp4', '/dev/null'],
+        ['-y', '-i', filePath, ...video, '-b:v', `${bitrate}k`, ...scale(fitted),
+         ...pass(2), '-c:a', 'aac', '-b:a', `${audioKbps}k`, outputPath],
       ];
     }
     
@@ -134,7 +215,8 @@ const compressVideo = async (filePath, options) => {
       }
     } finally {
       if (passLog) {
-        for (const scratch of [`${passLog}-0.log`, `${passLog}-0.log.mbtree`]) {
+        for (const scratch of [`${passLog}-0.log`, `${passLog}-0.log.mbtree`,
+                               `${passLog}.log`, `${passLog}.log.cutree`]) {
           try { fs.unlinkSync(scratch); } catch (e) { /* never written */ }
         }
       }
@@ -146,13 +228,29 @@ const compressVideo = async (filePath, options) => {
   }
 };
 
-// Helper function to get video duration
-const getVideoDuration = async (filePath) => {
+// Duration, dimensions and the video stream's bitrate. Some containers (WebM, many MKV
+// remuxes) carry no per-stream bitrate; then it is estimated from the whole
+// file less the audio, and failing that left null so no ceiling is applied.
+const probeVideo = async (filePath) => {
   const { stdout } = await run('ffprobe', [
-    '-v', 'error', '-show_entries', 'format=duration',
-    '-of', 'default=noprint_wrappers=1:nokey=1', filePath,
+    '-v', 'error', '-print_format', 'json',
+    '-show_entries', 'format=duration,bit_rate:stream=codec_type,bit_rate,width,height', filePath,
   ]);
-  return parseFloat(stdout.trim());
+  const info = JSON.parse(stdout);
+  const kbps = (v) => (Number(v) > 0 ? Number(v) / 1000 : 0);
+  const streams = info.streams || [];
+  const videoStream = streams.find((s) => s.codec_type === 'video');
+  const audioKbps = streams
+    .filter((s) => s.codec_type === 'audio')
+    .reduce((sum, s) => sum + (kbps(s.bit_rate) || 128), 0);
+  const videoKbps = kbps(videoStream?.bit_rate) ||
+    Math.max(0, kbps(info.format?.bit_rate) - audioKbps) || null;
+  return {
+    duration: parseFloat(info.format?.duration) || 0,
+    videoKbps,
+    width: videoStream?.width || 0,
+    height: videoStream?.height || 0,
+  };
 };
 
 // Compression route - process file compression based on file type
@@ -162,7 +260,7 @@ router.post('/:id', async (req, res, next) => {
     if (!isSafeId(id)) {
       throw new AppError('File not found', 404);
     }
-    const { quality, format, maxSize } = req.body;
+    const { quality, format, maxSize, codec, resolution } = req.body;
     
     const filePath = path.join(__dirname, '../temp', id);
     
@@ -192,7 +290,9 @@ router.post('/:id', async (req, res, next) => {
       outputPath = await compressVideo(filePath, {
         quality: quality || 'medium',
         format: format || 'mp4',
-        maxSize: maxSize ? parseInt(maxSize) : null
+        maxSize: maxSize ? parseInt(maxSize) : null,
+        codec: codec || 'h264',
+        resolution
       });
     } else {
       throw new AppError('Unsupported file type for compression', 400);

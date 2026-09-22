@@ -105,6 +105,10 @@ const FileProcessor: React.FC = () => {
           }
           file = getFile(id);
           if (!file?.serverId) return; // removed while uploading
+          if (file.hold) {
+            update(id, { status: 'ready' });
+            return;
+          }
           const { type, options, serverId } = file;
           const route = routeFor(type, options);
           update(id, { status: 'processing', startedAt: Date.now(), result: undefined, error: undefined });
@@ -154,17 +158,21 @@ const FileProcessor: React.FC = () => {
       if (batch.length === 0) return;
 
       const tier = useFiles.getState().defaultTier;
-      const items: FileItem[] = batch.map((file) => ({
-        id: uid(),
-        file,
-        name: file.name,
-        size: file.size,
-        type: detectType(file),
-        status: 'queued',
-        uploadProgress: 0,
-        options: { tier, format: KEEP_ORIGINAL.value },
-        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
-      }));
+      const items: FileItem[] = batch.map((file) => {
+        const type = detectType(file);
+        return {
+          id: uid(),
+          file,
+          name: file.name,
+          size: file.size,
+          type,
+          status: 'queued',
+          uploadProgress: 0,
+          options: { tier, format: KEEP_ORIGINAL.value },
+          hold: type === 'video',
+          previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
+        };
+      });
       useFiles.getState().addFiles(items);
       items.forEach((item) => void run(item.id));
     },
@@ -186,6 +194,20 @@ const FileProcessor: React.FC = () => {
     if (!file) return;
     update(id, { options: options ?? file.options, status: 'queued' });
     void run(id);
+  };
+
+  /** Release a held file with the settings the user chose. */
+  const start = (id: string, options: ProcessingOption) => {
+    const file = getFile(id);
+    if (!file) return;
+    // Still uploading: its run is in flight and checks `hold` once the upload
+    // lands, so starting another would upload the file twice.
+    if (file.status === 'uploading') {
+      update(id, { options, hold: false });
+      return;
+    }
+    update(id, { hold: false });
+    rerun(id, options);
   };
 
   const remove = (id: string) => {
@@ -300,7 +322,7 @@ const FileProcessor: React.FC = () => {
 
   const summary = useMemo(() => {
     const done = files.filter((f) => f.status === 'done' && f.result);
-    const busy = files.filter((f) => f.status !== 'done' && f.status !== 'error').length;
+    const busy = files.filter((f) => !['done', 'error', 'ready'].includes(f.status)).length;
     const before = done.reduce((s, f) => s + f.size, 0);
     const after = done.reduce((s, f) => s + (f.result?.outputSize ?? 0), 0);
     return {
@@ -430,6 +452,7 @@ const FileProcessor: React.FC = () => {
                     onDownload={() => download(file.id)}
                     onRemove={() => remove(file.id)}
                     onRerun={(options) => rerun(file.id, options)}
+                    onStart={(options) => start(file.id, options)}
                   />
                 ))}
               </AnimatePresence>
@@ -453,7 +476,8 @@ const FileProcessor: React.FC = () => {
                       {isDragReject ? 'That type isn’t supported' : 'Drop to add'}
                     </div>
                     <div className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                      They&apos;ll start right away with the current quality setting.
+                      They&apos;ll start right away with the current quality setting. Videos
+                      wait for you to choose.
                     </div>
                   </div>
                 </motion.div>

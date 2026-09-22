@@ -44,6 +44,10 @@ check "compress png (q70)"  "$(curl -s -X POST "$API/compression/$ID_fx_png" -H 
 check "compress jpg (q60)"  "$(curl -s -X POST "$API/compression/$ID_fx_jpg" -H 'Content-Type: application/json' -d '{"quality":60,"format":"jpeg"}')" compression
 check "compress pdf (med)"  "$(curl -s -X POST "$API/compression/$ID_fx_pdf" -H 'Content-Type: application/json' -d '{"quality":"medium"}')" compression
 check "compress mp4 (med)"  "$(curl -s -X POST "$API/compression/$ID_fx_mp4" -H 'Content-Type: application/json' -d '{"quality":"medium","format":"mp4"}')" compression
+check "compress mp4 (low)"  "$(curl -s -X POST "$API/compression/$ID_fx_mp4" -H 'Content-Type: application/json' -d '{"quality":"low","format":"original"}')" compression
+check "compress mp4 (h265)" "$(curl -s -X POST "$API/compression/$ID_fx_mp4" -H 'Content-Type: application/json' -d '{"quality":"low","format":"original","codec":"h265"}')" compression
+check "compress mp4 (720p)" "$(curl -s -X POST "$API/compression/$ID_fx_mp4" -H 'Content-Type: application/json' -d '{"quality":"high","format":"original","resolution":"720"}')" compression
+check "compress mp4 (h265 2-pass)" "$(curl -s -X POST "$API/compression/$ID_fx_mp4" -H 'Content-Type: application/json' -d '{"format":"original","maxSize":1,"codec":"h265"}')" compression
 
 echo; echo "=== CONVERSION ==="
 check "jpg -> webp"   "$(curl -s -X POST "$API/conversion/$ID_fx_jpg"  -H 'Content-Type: application/json' -d '{"format":"webp"}')" conversion
@@ -76,6 +80,14 @@ c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/compression/$ID_fx_mp4"
 [ "$c" = "400" ] && { echo "PASS  format injection -> 400"; pass=$((pass+1)); } || { echo "FAIL  format injection -> $c"; fail=$((fail+1)); }
 c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/compression/$ID_fx_png" -H 'Content-Type: application/json' -d '{"format":"mp4"}')
 [ "$c" = "400" ] && { echo "PASS  cross-type format -> 400"; pass=$((pass+1)); } || { echo "FAIL  cross-type format -> $c"; fail=$((fail+1)); }
+for res in '"4320"' '"__proto__"' '["720"]'; do
+  c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/compression/$ID_fx_mp4" -H 'Content-Type: application/json' -d "{\"format\":\"original\",\"resolution\":$res}")
+  [ "$c" = "400" ] && { echo "PASS  resolution $res -> 400"; pass=$((pass+1)); } || { echo "FAIL  resolution $res -> $c"; fail=$((fail+1)); }
+done
+for codec in '"x264 -vf x"' '"__proto__"' '{"a":1}'; do
+  c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/compression/$ID_fx_mp4" -H 'Content-Type: application/json' -d "{\"format\":\"original\",\"codec\":$codec}")
+  [ "$c" = "400" ] && { echo "PASS  codec $codec -> 400"; pass=$((pass+1)); } || { echo "FAIL  codec $codec -> $c"; fail=$((fail+1)); }
+done
 c=$(curl -s --path-as-is -o /dev/null -w '%{http_code}' "$API/compression/download/..%2Fpackage.json")
 [ "$c" = "404" ] && { echo "PASS  compression id traversal -> 404"; pass=$((pass+1)); } || { echo "FAIL  compression id traversal -> $c"; fail=$((fail+1)); }
 c=$(curl -s --path-as-is -o /dev/null -w '%{http_code}' "$API/conversion/download/..%2F..%2F..%2Fetc%2Fpasswd")

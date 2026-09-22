@@ -1,5 +1,5 @@
 import { canBecomePdf, extensionOf, KEEP_ORIGINAL } from './formats';
-import { FileItem, FileType, ProcessingOption, Route, Tier } from './types';
+import { FileItem, FileType, ProcessingOption, Route, Tier, VideoResolution } from './types';
 
 export const MAX_FILE_BYTES = 50 * 1024 * 1024;
 export const MAX_FILES_PER_DROP = 10;
@@ -57,12 +57,19 @@ export const requestBodyFor = (
       return { quality: imageQualityFor(options), format: KEEP_ORIGINAL.value };
     case 'pdf':
       return { quality: LEVEL[options.tier] };
-    case 'video':
+    case 'video': {
       // With maxSize the backend two-pass encodes towards that size and ignores
-      // quality entirely, so send one or the other - never both.
+      // quality entirely, so send one or the other - never both. Codec and
+      // resolution are only sent when not left to the default, so older results
+      // don't go stale.
+      const extra = {
+        ...(options.codec === 'h265' ? { codec: 'h265' } : {}),
+        ...(options.resolution ? { resolution: options.resolution } : {}),
+      };
       return options.targetSizeMb
-        ? { format: KEEP_ORIGINAL.value, maxSize: options.targetSizeMb }
-        : { quality: LEVEL[options.tier], format: KEEP_ORIGINAL.value };
+        ? { format: KEEP_ORIGINAL.value, maxSize: options.targetSizeMb, ...extra }
+        : { quality: LEVEL[options.tier], format: KEEP_ORIGINAL.value, ...extra };
+    }
     default:
       return { quality: LEVEL[options.tier], format: KEEP_ORIGINAL.value };
   }
@@ -92,10 +99,23 @@ export const describePlan = (file: FileItem) => {
   const { type, options } = file;
   if (isOffice(type)) return `Convert to PDF · ${tierLabel(options.tier)}`;
   if (options.format !== KEEP_ORIGINAL.value) return `Convert to ${options.format.toUpperCase()}`;
-  if (type === 'video' && options.targetSizeMb) return `Compress to about ${options.targetSizeMb} MB`;
+  const videoExtras =
+    type === 'video'
+      ? `${options.resolution ? ` · ${resolutionLabel(options.resolution)}` : ''}${
+          options.codec === 'h265' ? ' · H.265' : ''
+        }`
+      : '';
+  if (type === 'video' && options.targetSizeMb) return `Compress to about ${options.targetSizeMb} MB${videoExtras}`;
   if (type === 'image' && options.quality !== undefined) return `Compress · quality ${options.quality}`;
-  return `Compress · ${tierLabel(options.tier)}`;
+  return `Compress · ${tierLabel(options.tier)}${videoExtras}`;
 };
+
+export const resolutionLabel = (r: VideoResolution) => (r === 'source' ? 'original size' : `${r}p`);
+
+// The backend only muxes HEVC into MP4 and MOV.
+const HEVC_EXTS = ['mp4', 'mov'];
+export const canUseHevc = (type: FileType, name: string) =>
+  type === 'video' && HEVC_EXTS.includes(extensionOf(name));
 
 export const detectType = (file: File): FileType => {
   const mime = file.type || '';

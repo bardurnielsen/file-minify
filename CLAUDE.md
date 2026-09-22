@@ -101,6 +101,20 @@ check. No test framework is configured.
 - **Video ignores numeric quality.** With `maxSize` set, FFmpeg runs two-pass
   targeting that size and the quality value does nothing. PDF and video take a
   *named* level (`low|medium|high`), not a number — hence tiers.
+- **Video tiers differ by resolution and a bitrate ceiling, not just CRF.**
+  On an already-lean source (a 4 Mbps 1080p phone clip) CRF alone asked for
+  more bits than the source had, so Balanced and Best both came out larger and
+  the original was kept. Each tier now also caps peak bitrate at a share of the
+  source's (45/55/80% for H.264, a quarter lower for H.265, scaled down further
+  when the picture is), and by default caps the short side (720p / 1080p /
+  original). A `resolution` option (`source|1080|720|480`) overrides that; with
+  a target size, the resolution is picked from the bitrate the target allows.
+  `codec: 'h265'` is MP4/MOV only and tagged `hvc1` for Apple players. See
+  `VIDEO_SETTINGS` in `routes/compression.js`.
+- **Videos wait for the user.** A dropped video uploads straight away but is
+  held (`FileItem.hold`, status `ready`) with its settings panel open until
+  Compress is pressed: an encode takes minutes, can't be cancelled, and target
+  size is the setting that matters most. Everything else starts on drop.
 - **Office → PDF honours the tier.** The conversion route takes an optional
   `quality` (`low|medium|high`) for Office files and runs the LibreOffice PDF
   through Ghostscript at that level, keeping whichever is smaller. Other
