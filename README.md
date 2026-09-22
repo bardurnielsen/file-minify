@@ -71,6 +71,11 @@ Defined in `docker-compose.yml`; the app is on **3051** and the API on **4001**.
 These are deliberately offset so this can run alongside the original FileMinify on
 3050/4000. Change the left-hand side of each mapping to move them.
 
+Only 3051 is published to the network. The API is bound to `127.0.0.1:4001` for
+the smoke suite and for debugging from the host — nginx reaches the backend over
+the Compose network, so nothing else needs it, and publishing it would be a second
+front door that skips nginx and the rate limiting.
+
 ## Development
 
 Both services build from the repo root. After editing:
@@ -86,7 +91,8 @@ type check. There is no test framework configured.
 Running outside Docker is possible (`npm install && npm run dev` at the root for
 Vite on :5173, and in `backend/` for the API on :4000) but the backend then needs
 FFmpeg, Ghostscript, ImageMagick and LibreOffice installed on the host. Docker is
-the supported path.
+the supported path. The Vite dev server proxies `/api` to :4000 the way nginx does
+in the container, so the browser stays on one origin either way.
 
 ## API
 
@@ -114,21 +120,31 @@ returns `failedId` naming it.
 | --- | --- | --- |
 | `PORT` | `4000` | backend port inside the container |
 | `NODE_ENV` | `production` | set by Compose |
-| `MAX_FILE_SIZE` | `52428800` | per-file upload limit in bytes |
-| `VITE_API_URL` | `http://backend:4000` | baked into the frontend at build time |
+| `MAX_FILE_SIZE` | `50MB` | per-file upload limit; bytes or a suffixed size |
+| `CORS_ORIGIN` | *(empty)* | extra origins allowed in, comma-separated. Empty means same-origin only, which is all the app itself needs |
+
+Compose also caps each container: 3 GB and 4 CPUs for the backend, 128 MB and half
+a CPU for nginx, with `restart: unless-stopped` and health checks on both, so a
+heavy batch cannot take the host with it and a reboot brings the app back.
 
 ## Notes on running this publicly
 
-This is built to be run on your own machine or a private network. Before exposing
-it to the internet, be aware:
+This is built for your own machine or a private network. What is in place:
+Helmet, per-file type and size validation, rate limiting (600 requests per 15
+minutes per client IP, counted from `X-Forwarded-For`), same-origin enforcement,
+and resource caps on both containers.
 
-- Uploads are unauthenticated, and anyone who can reach the app can spend CPU on
-  video encoding.
+Before exposing it beyond a trusted network, be aware:
+
+- Uploads are unauthenticated. Anyone who can reach the app can spend CPU on video
+  encoding — the container limits bound the damage, they do not prevent it.
 - Temporary files are readable by any request that can guess a UUID.
 - There is no TLS here; put it behind a reverse proxy that terminates HTTPS.
 
-Helmet, CORS, per-file type and size validation, and rate limiting (600 requests
-per 15 minutes per client IP, counted from `X-Forwarded-For`) are in place.
+If you do front it with another proxy, pass the original `Host` header through
+(`proxy_set_header Host $http_host`). The same-origin check compares the request's
+`Origin` against it, and a proxy that rewrites `Host` will make the app reject its
+own requests.
 
 ## Licence
 

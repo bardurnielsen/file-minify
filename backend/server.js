@@ -26,7 +26,46 @@ const app = express();
 
 // Set security-related middleware
 app.use(helmet());
-app.use(cors());
+
+// nginx serves the app and proxies /api on the same origin, so the browser
+// never makes a cross-origin call and no CORS headers are needed. The default
+// `cors()` answered every origin with `Access-Control-Allow-Origin: *`, which
+// let any page on the internet drive this service from a LAN user's browser.
+// CORS_ORIGIN opts specific origins back in, comma-separated, for anything
+// that genuinely lives elsewhere.
+const corsOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
+if (corsOrigins.length > 0) {
+  app.use(cors({ origin: corsOrigins }));
+}
+
+// Dropping the CORS headers stops a foreign page reading our responses, but a
+// multipart POST is a "simple" request: the browser sends it anyway and only
+// hides the reply, so the upload still lands and the encode still runs. On an
+// unauthenticated service the cost *is* the attack, so reject a mismatched
+// Origin outright. Origin's host is compared against the Host header nginx
+// forwards, which means this needs no configuration and follows the app
+// wherever it is reached from -- hostname, LAN address or localhost alike.
+// A request with no Origin at all is left alone: curl, the smoke suite and
+// every non-browser client send none, and none of them are the threat here.
+const originAllowed = (req) => {
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  if (corsOrigins.includes(origin)) return true;
+  try {
+    return new URL(origin).host === req.headers.host;
+  } catch {
+    return false;
+  }
+};
+
+app.use((req, res, next) => {
+  if (originAllowed(req)) return next();
+  logger.warn(`Rejected cross-origin ${req.method} ${req.path}`);
+  return res.status(403).json({ success: false, error: 'Cross-origin request rejected' });
+});
 
 // nginx is the only thing in front of this, and it sets X-Forwarded-For.
 // Without this the limiter sees nginx's container address for every visitor and
