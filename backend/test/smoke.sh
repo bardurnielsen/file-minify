@@ -50,6 +50,7 @@ check "jpg -> webp"   "$(curl -s -X POST "$API/conversion/$ID_fx_jpg"  -H 'Conte
 check "png -> pdf"    "$(curl -s -X POST "$API/conversion/$ID_fx_png"  -H 'Content-Type: application/json' -d '{"format":"pdf"}')"  conversion
 check "pdf -> png"    "$(curl -s -X POST "$API/conversion/$ID_fx_pdf"  -H 'Content-Type: application/json' -d '{"format":"png"}')"  conversion
 check "docx -> pdf"   "$(curl -s -X POST "$API/conversion/$ID_fx_docx" -H 'Content-Type: application/json' -d '{"format":"pdf"}')"  conversion
+check "docx -> pdf (low)" "$(curl -s -X POST "$API/conversion/$ID_fx_docx" -H 'Content-Type: application/json' -d '{"format":"pdf","quality":"low"}')" conversion
 check "mp4 -> webm"   "$(curl -s -X POST "$API/conversion/$ID_fx_mp4"  -H 'Content-Type: application/json' -d '{"format":"webm"}')" conversion
 check "mp4 -> avi"    "$(curl -s -X POST "$API/conversion/$ID_fx_mp4"  -H 'Content-Type: application/json' -d '{"format":"avi"}')"  conversion
 
@@ -58,6 +59,17 @@ c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/compression/nope.pdf" -
 [ "$c" = "404" ] && { echo "PASS  missing file -> 404"; pass=$((pass+1)); } || { echo "FAIL  missing file -> $c"; fail=$((fail+1)); }
 c=$(curl -s -X POST "$API/conversion/$ID_fx_docx" -H 'Content-Type: application/json' -d '{"format":"png"}' -o /dev/null -w '%{http_code}')
 [ "$c" = "400" ] && { echo "PASS  docx->png rejected 400"; pass=$((pass+1)); } || { echo "FAIL  docx->png -> $c"; fail=$((fail+1)); }
+# Ghostscript exits 0 on a PDF that needs a password and writes a blank page,
+# which used to come back as a 95% saving. It must be refused instead.
+ID_locked=$(up fx-locked.pdf application/pdf)
+for spec in "compression:{\"quality\":\"medium\"}" "conversion:{\"format\":\"png\"}"; do
+  route=${spec%%:*}; body=${spec#*:}
+  r=$(curl -s -X POST "$API/$route/$ID_locked" -H 'Content-Type: application/json' -d "$body" -w ' %{http_code}')
+  case "$r" in
+    *password-protected*422) echo "PASS  locked pdf $route -> 422"; pass=$((pass+1)) ;;
+    *) echo "FAIL  locked pdf $route -> $(printf '%s' "$r" | head -c 160)"; fail=$((fail+1)) ;;
+  esac
+done
 
 echo; echo "=== SECURITY REGRESSIONS ==="
 c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/compression/$ID_fx_mp4" -H 'Content-Type: application/json' -d '{"format":"mp4$(touch /app/PWNED_FMT)"}')

@@ -46,9 +46,10 @@ export const requestBodyFor = (
   type: FileType,
   options: ProcessingOption
 ): Record<string, string | number> => {
-  if (routeFor(type, options) === 'conversion') {
-    return { format: isOffice(type) ? 'pdf' : options.format };
-  }
+  // Office files go to PDF, and the backend then runs Ghostscript at this level
+  // just as it does for a dropped PDF. Other conversions ignore quality.
+  if (isOffice(type)) return { format: 'pdf', quality: LEVEL[options.tier] };
+  if (routeFor(type, options) === 'conversion') return { format: options.format };
   switch (type) {
     case 'image':
       // maxSize is deliberately omitted: the backend treats it as a megapixel
@@ -89,7 +90,7 @@ export const outputNameFor = (name: string, type: FileType, options: ProcessingO
 /** Short, human description of what will happen to a file. */
 export const describePlan = (file: FileItem) => {
   const { type, options } = file;
-  if (isOffice(type)) return 'Convert to PDF';
+  if (isOffice(type)) return `Convert to PDF · ${tierLabel(options.tier)}`;
   if (options.format !== KEEP_ORIGINAL.value) return `Convert to ${options.format.toUpperCase()}`;
   if (type === 'video' && options.targetSizeMb) return `Compress to about ${options.targetSizeMb} MB`;
   if (type === 'image' && options.quality !== undefined) return `Compress · quality ${options.quality}`;

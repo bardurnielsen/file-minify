@@ -247,7 +247,7 @@ const FileRow: React.FC<FileRowProps> = ({ file, onDownload, onRemove, onRerun }
     }
     const target = targetFormatFor(file.type, file.name, file.options).toUpperCase();
     const plan = isOffice(file.type)
-      ? `→ PDF`
+      ? `→ PDF · ${tierLabel(file.options.tier)}`
       : target !== srcExt
         ? `→ ${target}`
         : file.type === 'video' && file.options.targetSizeMb
@@ -307,7 +307,7 @@ const FileRow: React.FC<FileRowProps> = ({ file, onDownload, onRemove, onRerun }
               Redo
             </Button>
           )}
-          {!busy && !isOffice(file.type) && (
+          {!busy && (
             <Button
               variant="ghost"
               size="icon"
