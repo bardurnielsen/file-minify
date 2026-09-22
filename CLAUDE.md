@@ -85,6 +85,12 @@ check. No test framework is configured.
    asset-cache block therefore uses `expires` alone — when it also set
    `Cache-Control` by hand, every JS and CSS file was served with no CSP and no
    `X-Frame-Options`.
+9. **No `cpus:` on the backend.** Docker refuses to start a container whose
+   `cpus` exceeds the host's core count, rather than clamping — `cpus: 4.0`,
+   picked on a 12-core dev machine, stopped the backend dead on CI's two-core
+   runner and would have done the same on any smaller server. Memory is the
+   limit that protects the host; keep `mem_limit`. A value at or below 1 (as
+   the frontend uses) is safe anywhere.
 
 ## Behaviour worth knowing
 

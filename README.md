@@ -123,9 +123,15 @@ returns `failedId` naming it.
 | `MAX_FILE_SIZE` | `50MB` | per-file upload limit; bytes or a suffixed size |
 | `CORS_ORIGIN` | *(empty)* | extra origins allowed in, comma-separated. Empty means same-origin only, which is all the app itself needs |
 
-Compose also caps each container: 3 GB and 4 CPUs for the backend, 128 MB and half
-a CPU for nginx, with `restart: unless-stopped` and health checks on both, so a
-heavy batch cannot take the host with it and a reboot brings the app back.
+Compose also caps each container: 3 GB for the backend, 128 MB and half a CPU for
+nginx, with `restart: unless-stopped` and health checks on both, so a heavy batch
+cannot take the host with it and a reboot brings the app back.
+
+The backend has no CPU cap on purpose. `cpus:` is not a limit that degrades —
+Docker refuses to start the container at all when the value exceeds the host's
+core count, so a number chosen on one machine stops the app dead on a smaller
+one. Transcoding is also the whole job here, so throttling it mostly slows the
+people using the app. Add one by hand if you want it, no higher than `nproc`.
 
 ## Notes on running this publicly
 
