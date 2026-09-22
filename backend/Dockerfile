@@ -1,4 +1,4 @@
-FROM node:18-bookworm-slim
+FROM node:22-bookworm-slim
 
 # Install dependencies for file processing
 # (Debian base: Alpine's libreoffice package has unsatisfiable deps)
@@ -24,7 +24,7 @@ WORKDIR /app
 COPY ./backend/package*.json ./
 
 # Install app dependencies
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy app source code
 COPY ./backend .

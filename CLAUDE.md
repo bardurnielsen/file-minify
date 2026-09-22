@@ -73,6 +73,24 @@ check. No test framework is configured.
 5. **`format: 'original'` means "keep the source format"** and is resolved to the
    source extension server-side. It must never reach a filename or an encoder as a
    literal — it once produced files named `compressed-<uuid>.original`.
+6. **The backend port stays on `127.0.0.1`.** Published on `0.0.0.0` it is a second
+   front door that skips nginx, and because `trust proxy` makes Express believe
+   `X-Forwarded-For`, a direct client can set that header per request and rotate
+   itself out of the rate limiter. Verified: rotating the header held
+   `RateLimit-Remaining` at 599 indefinitely.
+7. **nginx forwards `Host` as `$http_host`, not `$host`.** `$host` strips the port,
+   so the same-origin check compared `example` against an `Origin` of
+   `example:3051` and rejected the app's own uploads with a 403.
+8. **An nginx `add_header` in a nested location drops every inherited one.** The
+   asset-cache block therefore uses `expires` alone — when it also set
+   `Cache-Control` by hand, every JS and CSS file was served with no CSP and no
+   `X-Frame-Options`.
+9. **No `cpus:` on the backend.** Docker refuses to start a container whose
+   `cpus` exceeds the host's core count, rather than clamping — `cpus: 4.0`,
+   picked on a 12-core dev machine, stopped the backend dead on CI's two-core
+   runner and would have done the same on any smaller server. Memory is the
+   limit that protects the host; keep `mem_limit`. A value at or below 1 (as
+   the frontend uses) is safe anywhere.
 
 ## Behaviour worth knowing
 
@@ -89,6 +107,11 @@ check. No test framework is configured.
   `failedId` naming it. The UI offers leaving it out.
 - **Merge uses the processed output** (`processedId ?? serverId`), so a converted
   docx is not pushed through LibreOffice twice.
+- **A foreign `Origin` is rejected with a 403**, not just denied CORS headers. A
+  multipart POST is a "simple" request: the browser sends it regardless and only
+  hides the reply, so CORS alone still let a hostile page upload a file and start
+  an encode. `CORS_ORIGIN` opts specific origins back in; a request with no
+  `Origin` at all (curl, the smoke suite) is left alone.
 - **The rate limiter is mounted on the paths nginx actually delivers** (`/upload`,
   `/compression`, `/conversion`, `/merge`) rather than `/api/`, which the proxy
   strips. `trust proxy` is set to 1 so clients are counted by `X-Forwarded-For`
@@ -106,8 +129,9 @@ base URL to point it elsewhere. It exits non-zero on failure.
 
 It covers upload, compression, conversion, error handling, and a security block
 pinning the bugs fixed in `1f27b28` — format injection, `id` path traversal on
-the download and delete routes, MIME rejection, and the upload size cap. Those
-last cases are regression tests: if one starts failing, a hole has reopened.
+the download and delete routes, MIME rejection, the upload size cap, and the
+same-origin check in both directions. Those last cases are regression tests: if
+one starts failing, a hole has reopened.
 
 `curl` needs an explicit `;type=<mime>` on `-F` uploads or the MIME allowlist
 rejects the file.

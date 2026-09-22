@@ -3,25 +3,72 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+    # Published to the LAN: this is the app, and other machines open it.
     ports:
       - "3051:80"
-    environment:
-      - VITE_API_URL=http://backend:4000
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 128m
+    # Safe anywhere, unlike an absolute cap above 1: every host has at least
+    # one core, and nginx serving static files needs a fraction of it.
+    cpus: 0.5
+    pids_limit: 128
+    healthcheck:
+      # 127.0.0.1, not localhost: that resolves to ::1 first and nginx
+      # listens on IPv4 only, so the check would fail against a healthy
+      # server and the frontend would never come up behind depends_on.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
+    # Loopback only. nginx reaches the backend over the compose network, so the
+    # published port exists purely for the smoke suite and for debugging from
+    # the host. Published on 0.0.0.0 it would be a second front door that skips
+    # nginx -- and since `trust proxy` makes Express believe X-Forwarded-For,
+    # a direct client could set that header per request and rotate itself out
+    # of the rate limiter entirely.
     ports:
-      - "4001:4000"
+      - "127.0.0.1:4001:4000"
     environment:
       - NODE_ENV=production
       - PORT=4000
       - MAX_FILE_SIZE=50MB
+      # Same-origin only by default: nginx serves the app and proxies /api on
+      # one origin, so the browser never makes a cross-origin call. Set this to
+      # an origin (or a comma-separated list) only if something else needs in.
+      - CORS_ORIGIN=
     volumes:
       - temp_files:/app/temp
+    restart: unless-stopped
+    # A 50MB video through two-pass ffmpeg, Ghostscript and LibreOffice is the
+    # heavy case. Memory is what can actually take the host down with it, so
+    # that is what is capped; a saturated CPU only makes things slow.
+    #
+    # Deliberately no `cpus:` here. It is not a cap that degrades -- Docker
+    # refuses to start the container outright when the value exceeds the
+    # host's core count ("range of CPUs is from 0.01 to 2.00"), so a number
+    # picked on one machine is a landmine on a smaller one. CI caught it on a
+    # two-core runner. It is also the wrong trade for this workload:
+    # transcoding is the job, and throttling it slows the people using the app
+    # to guard against something a trusted network does not have. Add one by
+    # hand if you want it, no higher than `nproc` on the smallest host it will
+    # ever run on.
+    mem_limit: 3g
+    pids_limit: 512
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:4000/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
 volumes:
   temp_files:

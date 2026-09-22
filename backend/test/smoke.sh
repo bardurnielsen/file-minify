@@ -81,5 +81,15 @@ head -c 60000000 /dev/zero > "$OUT/big.jpg"
 c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/upload" -F "files=@$OUT/big.jpg;type=image/jpeg")
 [ "$c" = "400" ] && { echo "PASS  60MB upload -> 400"; pass=$((pass+1)); } || { echo "FAIL  60MB upload -> $c"; fail=$((fail+1)); }
 
+# A foreign Origin must be refused outright, not merely denied the response
+# headers: a multipart POST is a simple request, so CORS alone would still let
+# a hostile page upload and start an encode. A request whose Origin matches the
+# host it arrived on is the app itself and must still work.
+ORIGIN_HOST=${API#*://}
+c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/upload" -H "Origin: https://evil.example" -F "files=@fx.png;type=image/png")
+[ "$c" = "403" ] && { echo "PASS  foreign origin -> 403"; pass=$((pass+1)); } || { echo "FAIL  foreign origin -> $c"; fail=$((fail+1)); }
+c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/upload" -H "Origin: http://$ORIGIN_HOST" -F "files=@fx.png;type=image/png")
+[ "$c" = "200" ] && { echo "PASS  same origin -> 200"; pass=$((pass+1)); } || { echo "FAIL  same origin -> $c"; fail=$((fail+1)); }
+
 echo; echo "===== $pass passed, $fail failed ====="
 [ "$fail" -eq 0 ]
