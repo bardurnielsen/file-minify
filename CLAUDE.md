@@ -101,6 +101,19 @@ check. No test framework is configured.
 - **Video ignores numeric quality.** With `maxSize` set, FFmpeg runs two-pass
   targeting that size and the quality value does nothing. PDF and video take a
   *named* level (`low|medium|high`), not a number — hence tiers.
+- **Office → PDF honours the tier.** The conversion route takes an optional
+  `quality` (`low|medium|high`) for Office files and runs the LibreOffice PDF
+  through Ghostscript at that level, keeping whichever is smaller. Other
+  conversions ignore quality.
+- **Every Ghostscript PDF is then repacked by pdf-lib** into compressed object
+  streams (lossless). Ghostscript 10.00 writes objects loose, so a spreadsheet
+  with thousands of hyperlinks stayed ~1.3 MB at every tier; repacked it is
+  ~570 KB. Best effort: if pdf-lib can't read the file, or the repack isn't
+  smaller, the Ghostscript output is kept.
+- **Ghostscript exits 0 on a PDF that needs a password to open** and writes a
+  blank page, which used to come back as a 95% saving. `needsPassword` spots
+  its stderr message and the route answers 422 instead. PDFs that only
+  restrict printing or editing still work. Merge reports the same case itself.
 - **`maxSize` means different things per type**: a target file size for video, but
   a megapixel cap for images, where it silently downscales.
 - **Merging is atomic.** One unconvertible file fails the whole merge, with

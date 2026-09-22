@@ -5,7 +5,15 @@ const { AppError } = require('../middleware/errorHandler');
 const { isSafeId } = require('../utils/safeId');
 const { run } = require('../utils/run');
 const logger = require('../utils/logger');
-const { convertOfficeToPDF, convertImageToPDF } = require('../utils/converters');
+const {
+  convertOfficeToPDF,
+  convertImageToPDF,
+  compressPDF,
+  needsPassword,
+  PASSWORD_PROTECTED,
+} = require('../utils/converters');
+
+const PDF_LEVELS = ['low', 'medium', 'high'];
 
 const router = express.Router();
 
@@ -89,6 +97,7 @@ const convertPDFToImage = async (filePath, format) => {
     return outputPath;
   } catch (error) {
     logger.error('PDF to image conversion failed', error);
+    if (needsPassword(error.stderr)) throw new AppError(PASSWORD_PROTECTED, 422);
     throw new AppError('PDF to image conversion failed', 500);
   }
 };
@@ -139,6 +148,18 @@ router.post('/:id', async (req, res, next) => {
         throw new AppError('Office documents can only be converted to PDF', 400);
       }
       outputPath = await convertOfficeToPDF(filePath);
+      // An optional named level runs the PDF through Ghostscript, as the
+      // compression route does for a dropped PDF. Keep whichever is smaller.
+      const { quality } = req.body;
+      if (PDF_LEVELS.includes(quality)) {
+        const compressedPath = await compressPDF(outputPath, { quality });
+        if (fs.statSync(compressedPath).size < fs.statSync(outputPath).size) {
+          fs.unlinkSync(outputPath);
+          outputPath = compressedPath;
+        } else {
+          fs.unlinkSync(compressedPath);
+        }
+      }
     } else if (['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(fileExt)) {
       // Image conversion
       if (format === 'pdf') {

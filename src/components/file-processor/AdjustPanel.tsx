@@ -41,7 +41,10 @@ const AdjustPanel: React.FC<AdjustPanelProps> = ({ file, onApply, onClose }) => 
   const [draft, setDraft] = useState<ProcessingOption>(file.options);
   const patch = (p: Partial<ProcessingOption>) => setDraft((d) => ({ ...d, ...p }));
 
-  const converting = isOffice(file.type) || draft.format !== KEEP_ORIGINAL.value;
+  const office = isOffice(file.type);
+  const converting = office || draft.format !== KEEP_ORIGINAL.value;
+  // Office output is a PDF compressed at the chosen tier, so the tier applies.
+  const tierApplies = !converting || office;
   const sizeMb = file.size / 1024 / 1024;
   const canTargetSize = file.type === 'video' && sizeMb >= 2;
   const targetMax = Math.max(1, Math.min(50, Math.ceil(sizeMb) - 1));
@@ -53,7 +56,7 @@ const AdjustPanel: React.FC<AdjustPanelProps> = ({ file, onApply, onClose }) => 
     <div className="border-t border-zinc-100 bg-zinc-50/70 px-4 py-4 dark:border-zinc-800 dark:bg-zinc-900/60 sm:px-5">
       <div className="space-y-5">
         <Field label="Output" hint={converting ? 'Handled by the conversion route.' : undefined}>
-          {isOffice(file.type) ? (
+          {office ? (
             <div className="pt-1.5 text-sm text-zinc-600 dark:text-zinc-300">
               PDF <span className="text-zinc-400 dark:text-zinc-500">· the only target for Office files</span>
             </div>
@@ -66,7 +69,7 @@ const AdjustPanel: React.FC<AdjustPanelProps> = ({ file, onApply, onClose }) => 
           )}
         </Field>
 
-        {converting ? (
+        {!tierApplies ? (
           <p className="rounded-lg border border-zinc-200/80 bg-white px-3 py-2 text-xs leading-relaxed text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
             Conversions use the encoder&apos;s standard quality; the quality setting doesn&apos;t apply.
             To shrink the file in its current format, choose &ldquo;Keep format&rdquo;.
@@ -75,7 +78,7 @@ const AdjustPanel: React.FC<AdjustPanelProps> = ({ file, onApply, onClose }) => 
           <>
             <Field
               label="Quality"
-              hint={file.type === 'pdf' ? PDF_HINT[draft.tier] : undefined}
+              hint={file.type === 'pdf' || office ? PDF_HINT[draft.tier] : undefined}
             >
               <TierControl
                 id={`adjust-${file.id}`}

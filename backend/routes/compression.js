@@ -7,6 +7,7 @@ const { AppError } = require('../middleware/errorHandler');
 const { isSafeId } = require('../utils/safeId');
 const { run } = require('../utils/run');
 const logger = require('../utils/logger');
+const { compressPDF } = require('../utils/converters');
 
 const router = express.Router();
 
@@ -70,40 +71,6 @@ const compressImage = async (filePath, options) => {
   } catch (error) {
     logger.error('Image compression failed', error);
     throw new AppError('Image compression failed', 500);
-  }
-};
-
-// Compress PDF file
-const compressPDF = async (filePath, options) => {
-  const { quality = 'screen' } = options; // 'screen', 'ebook', 'printer', 'prepress'
-  const outputPath = path.join(
-    path.dirname(filePath),
-    `compressed-${path.basename(filePath)}`
-  );
-  
-  try {
-    // Use Ghostscript for PDF compression
-    const qualitySettings = {
-      low: ['-dPDFSETTINGS=/screen', '-dColorImageDownsampleType=/Bicubic', '-dColorImageResolution=72'],
-      medium: ['-dPDFSETTINGS=/ebook', '-dColorImageDownsampleType=/Bicubic', '-dColorImageResolution=150'],
-      high: ['-dPDFSETTINGS=/printer', '-dColorImageDownsampleType=/Bicubic', '-dColorImageResolution=300']
-    };
-    
-    // Determine quality settings based on input
-    const qualitySetting = quality === 'low' ? qualitySettings.low : 
-                          quality === 'high' ? qualitySettings.high : 
-                          qualitySettings.medium;
-                          
-    await run('gs', [
-      '-sDEVICE=pdfwrite', '-dCompatibilityLevel=1.4', '-dNOPAUSE', '-dQUIET', '-dBATCH',
-      ...qualitySetting,
-      `-sOutputFile=${outputPath}`,
-      filePath,
-    ]);
-    return outputPath;
-  } catch (error) {
-    logger.error('PDF compression failed', error);
-    throw new AppError('PDF compression failed', 500);
   }
 };
 
