@@ -8,8 +8,10 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
 
-// Load environment variables
-dotenv.config();
+// Load environment variables. `quiet` because dotenv 17+ otherwise prints an
+// "injected env (0) from .env" banner on every boot, and there is no .env
+// here -- Compose passes the environment directly.
+dotenv.config({ quiet: true });
 
 // Import routes
 const uploadRoutes = require('./routes/upload');
@@ -81,7 +83,7 @@ const limiter = rateLimit({
   // Each file costs roughly three requests (upload, process, download) and they
   // are sent per file, so a large batch adds up quickly. Set high enough not to
   // interrupt genuine use, low enough to blunt an unattended script.
-  max: 600,
+  limit: 600,
   message: 'Too many requests from this IP, please try again later',
   standardHeaders: true,
   legacyHeaders: false,
