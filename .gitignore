@@ -19,3 +19,7 @@ dist
 
 # tsc -b incremental state
 *.tsbuildinfo
+
+# Uploads and results when TEMP_DIR points inside the checkout (the example in
+# .env.example does). User files; never commit them.
+/temp/
