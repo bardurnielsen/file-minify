@@ -4,12 +4,10 @@
 # at all via .git, would otherwise rebuild the frontend for nothing.
 .git
 .github
-.bolt
 .claude
 **/node_modules
 dist
 backend
-screenshots
 *.md
 LICENSE
 docker-compose.yml
