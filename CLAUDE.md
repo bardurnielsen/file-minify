@@ -49,7 +49,8 @@ solution file (`"files": []` plus references), and plain `tsc` checks zero files
 
 ### Backend
 
-- `server.js` — Express setup, `/health`, and an hourly sweep deleting temp files
+- `server.js` — Express setup, `/health`, `/config` (upload limits for the
+  frontend), and an hourly sweep deleting temp files
   and stale `merge-*` scratch directories older than an hour.
 - `routes/upload.js` — Multer, `<uuid><ext>` naming, MIME allowlist.
 - `routes/compression.js` — Sharp (images), Ghostscript (PDF), FFmpeg (video).
@@ -92,7 +93,9 @@ solution file (`"files": []` plus references), and plain `tsc` checks zero files
    picked on a 12-core dev machine, stopped the backend dead on CI's two-core
    runner and would have done the same on any smaller server. Memory is the
    limit that protects the host; keep `mem_limit`. A value at or below 1 (as
-   the frontend uses) is safe anywhere.
+   the frontend uses) is safe anywhere. To be a good neighbour on a shared
+   host the backend uses `cpu_shares` instead: a relative weight, which only
+   bites under contention and cannot be too large for any host.
 
 ## Behaviour worth knowing
 
@@ -152,6 +155,15 @@ solution file (`"files": []` plus references), and plain `tsc` checks zero files
   hourly. The volume survives `docker compose down`; use `-v` to clear it.
 
 ## Testing
+
+Per-server settings (`MAX_FILE_MB`, `PROCESS_TIMEOUT_MIN`, `BACKEND_CPU_SHARES`,
+`TEMP_DIR`) come from an optional `.env` beside `docker-compose.yml`; see
+`.env.example`. nginx's config is a template (`frontend/nginx.conf.template`)
+whose upload limit and read timeout `frontend/nginx-limits.envsh` derives from
+the same settings at container start - never hard-code them again.
+
+`backend/test/bench.sh` times every tier and codec on the current host; use it to
+choose those settings.
 
 No unit tests. There is an API smoke suite at `backend/test/smoke.sh`, with
 fixtures beside it. It needs the stack running and defaults to :4001; pass a

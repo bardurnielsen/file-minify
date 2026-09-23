@@ -124,6 +124,7 @@ stripping the prefix.
 | `GET` | `/merge/download/:id` | the merged PDF |
 | `DELETE` | `/upload/:id` | discard an upload |
 | `GET` | `/health` | `{"status":"ok"}` |
+| `GET` | `/config` | `{maxFileBytes, maxFiles}`, the server's upload limits |
 
 `format` is a target format, or `original` (or omitted) to keep the source's.
 `quality` is 1–100 for images and `low`\|`medium`\|`high` for everything else.
@@ -133,12 +134,33 @@ merge that fails on one file also returns `failedId` naming it.
 
 ## Configuration
 
-| Variable | Default | Meaning |
+Per-server settings go in a `.env` file next to `docker-compose.yml` — copy
+[`.env.example`](.env.example). All are optional; `docker compose up -d` applies a
+change without a rebuild, and tracked files stay untouched, so `git pull` stays
+clean.
+
+| Setting | Default | Meaning |
 | --- | --- | --- |
-| `PORT` | `4000` | backend port inside the container |
-| `NODE_ENV` | `production` | set in the backend image |
-| `MAX_FILE_SIZE` | `50MB` | per-file upload limit; bytes or a suffixed size |
-| `CORS_ORIGIN` | *(empty)* | extra origins allowed in, comma-separated. Empty means same-origin only, which is all the app itself needs |
+| `MAX_FILE_MB` | `50` | largest upload, per file. A phone records roughly 150 MB per minute of 1080p, 300–400 MB per minute of 4K |
+| `PROCESS_TIMEOUT_MIN` | `5` | time allowed for each ffmpeg / Ghostscript / LibreOffice command. nginx's timeout follows from it |
+| `BACKEND_CPU_SHARES` | `512` | CPU weight against other containers (Docker default 1024). Only matters when the CPU is busy |
+| `TEMP_DIR` | named volume | a host directory for uploads and results, instead of a volume under `/var/lib/docker`. Must be dedicated (everything older than an hour is deleted) and writable by uid 1000 |
+
+The upload limit is enforced by the backend, mirrored into nginx at startup, and
+reported to the browser by `GET /config`, so it is only ever set in one place.
+
+`CORS_ORIGIN` (in `docker-compose.yml`, empty by default) opts extra origins in,
+comma-separated; the app itself needs none.
+
+### Sizing a server
+
+`./backend/test/bench.sh` times every quality tier and codec on the host it runs
+on, through the real API, with a generated phone-like clip or your own
+(`./backend/test/bench.sh clip.mp4`, `BENCH_SECONDS=120` for a longer one). Pick
+`PROCESS_TIMEOUT_MIN` so the slowest setting you care about fits with margin at
+the longest clip `MAX_FILE_MB` allows. Run it once idle and once while the
+server's other work is busy: the backend's low CPU weight means it deliberately
+slows down then.
 
 Compose also caps each container: 3 GB for the backend, 128 MB and half a CPU for
 nginx, with `restart: unless-stopped` and health checks on both, so a heavy batch
