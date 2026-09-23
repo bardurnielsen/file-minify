@@ -143,7 +143,7 @@ clean.
 | --- | --- | --- |
 | `MAX_FILE_MB` | `50` | largest upload, per file. A phone records roughly 150 MB per minute of 1080p, 300–400 MB per minute of 4K |
 | `PROCESS_TIMEOUT_MIN` | `5` | time allowed for each ffmpeg / Ghostscript / LibreOffice command. nginx's timeout follows from it |
-| `BACKEND_CPU_SHARES` | `512` | CPU weight against other containers (Docker default 1024). Only matters when the CPU is busy |
+| `BACKEND_CPU_SHARES` | `512` | CPU weight against other containers (Docker default 1024). Only matters when the CPU is busy. The kernel weight it maps to varies by runtime (512 → 59 on newer runc, 20 on older); `bench.sh` prints it |
 | `TEMP_DIR` | named volume | a host directory for uploads and results, instead of a volume under `/var/lib/docker`. Must be dedicated (everything older than an hour is deleted) and writable by uid 1000 |
 
 The upload limit is enforced by the backend, mirrored into nginx at startup, and

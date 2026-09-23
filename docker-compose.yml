@@ -81,9 +81,12 @@ services:
     # CPU is contended and can never be too large for a host, so unlike `cpus:`
     # it is safe everywhere. On an idle machine an encode still gets every
     # core; when another container wants CPU at the same time (a media server
-    # transcoding, say), this one yields. 512 is half the Docker default,
-    # about a sixth of the CPU under full contention with a default-weight
-    # container on cgroup v2. Set BACKEND_CPU_SHARES=1024 to compete equally.
+    # transcoding, say), this one yields. 512 is half the Docker default. The
+    # kernel weight it becomes depends on the container runtime: newer runc
+    # maps it to 59 against the default 100 (about 37% of a contended CPU),
+    # older ones to 20. backend/test/bench.sh prints the actual cpu.weight.
+    # Lower BACKEND_CPU_SHARES yields more (256 -> 34, 128 -> 20 on newer
+    # runc); 1024 competes equally.
     cpu_shares: ${BACKEND_CPU_SHARES:-512}
     mem_limit: 3g
     pids_limit: 512
