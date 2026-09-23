@@ -1,3 +1,7 @@
+# A template: the nginx image substitutes the ${FM_*} values at startup, after
+# nginx-limits.envsh has worked them out from the Compose settings. Only FM_*
+# names are substituted (NGINX_ENVSUBST_FILTER), so nginx's own $variables are
+# left alone.
 server {
     listen 80;
     server_name localhost;
@@ -49,11 +53,15 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
 
-        # Increase timeouts for large file uploads
-        proxy_connect_timeout 300s;
+        # Processing happens inside the request, so the read timeout has to cover
+        # the slowest job: a few commands (a two-pass encode is two, plus
+        # probes), each allowed PROCESS_TIMEOUT_MIN by the backend.
+        proxy_connect_timeout 60s;
         proxy_send_timeout 300s;
-        proxy_read_timeout 300s;
-        client_max_body_size 50M;
+        proxy_read_timeout ${FM_PROXY_TIMEOUT};
+        # The backend enforces the real per-file limit; this is that plus room
+        # for the multipart envelope, so an at-the-limit file isn't a 413 here.
+        client_max_body_size ${FM_MAX_BODY};
     }
 
     # Error pages. 50x.html ships with the nginx image and survives the dist

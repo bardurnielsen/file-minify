@@ -7,8 +7,13 @@ const execFilePromise = promisify(execFile);
 // media file can wedge a job forever; without a raised maxBuffer, ffmpeg's
 // progress output on a long video overruns the 1MB default and the job fails
 // opaquely.
+//
+// The timeout is per command, in minutes from PROCESS_TIMEOUT_MIN (default 5).
+// Raise it on a slow host or for large videos; nginx's read timeout is derived
+// from the same value (frontend/nginx-limits.envsh), so the two stay in step.
+const timeoutMin = Number(process.env.PROCESS_TIMEOUT_MIN);
 const RUN = {
-  timeout: 5 * 60 * 1000,
+  timeout: (timeoutMin > 0 ? timeoutMin : 5) * 60 * 1000,
   maxBuffer: 16 * 1024 * 1024,
   killSignal: 'SIGKILL',
 };

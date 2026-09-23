@@ -1,3 +1,6 @@
+# Per-server settings live in a .env file next to this one (see .env.example),
+# so tuning a host never means editing a tracked file. Every one has a default.
+
 services:
   frontend:
     build:
@@ -9,6 +12,12 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    # nginx's upload limit and proxy timeout are worked out from these at
+    # startup (frontend/nginx-limits.envsh), so they can't drift from the
+    # backend's.
+    environment:
+      - FM_MAX_FILE_MB=${MAX_FILE_MB:-50}
+      - FM_PROCESS_TIMEOUT_MIN=${PROCESS_TIMEOUT_MIN:-5}
     restart: unless-stopped
     mem_limit: 128m
     # Safe anywhere, unlike an absolute cap above 1: every host has at least
@@ -40,13 +49,19 @@ services:
     # NODE_ENV=production and PORT=4000 come from the image. PORT is not a real
     # knob: the port map above, the healthcheck and nginx all say 4000.
     environment:
-      - MAX_FILE_SIZE=50MB
+      - MAX_FILE_SIZE=${MAX_FILE_MB:-50}MB
+      # Per external command (ffmpeg, gs, libreoffice). A two-pass encode is two.
+      - PROCESS_TIMEOUT_MIN=${PROCESS_TIMEOUT_MIN:-5}
       # Same-origin only by default: nginx serves the app and proxies /api on
       # one origin, so the browser never makes a cross-origin call. Set this to
       # an origin (or a comma-separated list) only if something else needs in.
       - CORS_ORIGIN=
+    # Uploads and results. TEMP_DIR can point this at a host directory instead
+    # of the named volume (which lives under /var/lib/docker). It must be a
+    # directory of its own: the hourly sweep deletes everything in it older
+    # than an hour. The container runs as uid 1000, which needs write access.
     volumes:
-      - temp_files:/app/temp
+      - ${TEMP_DIR:-temp_files}:/app/temp
     restart: unless-stopped
     # A 50MB video through two-pass ffmpeg, Ghostscript and LibreOffice is the
     # heavy case. Memory is what can actually take the host down with it, so
@@ -61,6 +76,18 @@ services:
     # to guard against something a trusted network does not have. Add one by
     # hand if you want it, no higher than `nproc` on the smallest host it will
     # ever run on.
+    #
+    # What it does have is a lower CPU *weight*. A weight only matters when the
+    # CPU is contended and can never be too large for a host, so unlike `cpus:`
+    # it is safe everywhere. On an idle machine an encode still gets every
+    # core; when another container wants CPU at the same time (a media server
+    # transcoding, say), this one yields. 512 is half the Docker default. The
+    # kernel weight it becomes depends on the container runtime: newer runc
+    # maps it to 59 against the default 100 (about 37% of a contended CPU),
+    # older ones to 20. backend/test/bench.sh prints the actual cpu.weight.
+    # Lower BACKEND_CPU_SHARES yields more (256 -> 34, 128 -> 20 on newer
+    # runc); 1024 competes equally.
+    cpu_shares: ${BACKEND_CPU_SHARES:-512}
     mem_limit: 3g
     pids_limit: 512
     healthcheck:

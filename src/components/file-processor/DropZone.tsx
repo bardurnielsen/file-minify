@@ -2,7 +2,8 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { ArrowDown, FolderOpen, Plus } from 'lucide-react';
 import { Tier } from '../../types';
-import { cn } from '../../lib/format';
+import { cn, formatBytes } from '../../lib/format';
+import { useFiles } from '../../hooks/useFiles';
 import TierControl from './TierControl';
 
 interface HeroProps {
@@ -20,7 +21,9 @@ export const DropHero: React.FC<HeroProps> = ({
   isDragReject,
   defaultTier,
   onTierChange,
-}) => (
+}) => {
+  const maxFileBytes = useFiles((s) => s.maxFileBytes);
+  return (
   <div className="p-3 sm:p-4">
     <div
       onClick={onBrowse}
@@ -65,7 +68,8 @@ export const DropHero: React.FC<HeroProps> = ({
             : 'Drop files to make them smaller'}
       </h2>
       <p className="mt-2 max-w-md text-[15px] leading-relaxed text-zinc-500 dark:text-zinc-400">
-        Images, video, PDF and Office documents, up to 50 MB each. Sensible
+        Images, video, PDF and Office documents, up to{' '}
+        {formatBytes(maxFileBytes)} each. Sensible
         settings are picked for you. Drop several and you can also merge them
         into a single PDF.
       </p>
@@ -90,7 +94,8 @@ export const DropHero: React.FC<HeroProps> = ({
       </span>
     </div>
   </div>
-);
+  );
+};
 
 interface AddMoreProps {
   onBrowse: () => void;

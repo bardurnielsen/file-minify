@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { MotionConfig } from 'framer-motion';
 import { ThemeProvider } from './components/theme-provider';
 import { ToastProvider } from './components/ui/toaster';
@@ -5,6 +6,8 @@ import Layout from './components/layout/Layout';
 import FileProcessor from './components/file-processor/FileProcessor';
 import HowItWorks from './components/pages/HowItWorks';
 import { NavigationProvider, useNavigation } from './contexts/NavigationContext';
+import { fetchConfig } from './lib/api';
+import { useFiles } from './hooks/useFiles';
 
 function AppContent() {
   const { currentPage } = useNavigation();
@@ -12,6 +15,13 @@ function AppContent() {
 }
 
 function App() {
+  // The upload limit is a server setting; ask once, keep the default otherwise.
+  useEffect(() => {
+    void fetchConfig().then((config) => {
+      if (config) useFiles.getState().setMaxFileBytes(config.maxFileBytes);
+    });
+  }, []);
+
   return (
     <MotionConfig reducedMotion="user">
       <ThemeProvider>

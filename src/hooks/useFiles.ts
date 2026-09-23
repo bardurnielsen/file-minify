@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { FileItem, MergeState, Tier } from '../types';
+import { MAX_FILE_BYTES } from '../processing';
 
 const EMPTY_MERGE: MergeState = { status: 'idle', order: [], excluded: [], name: 'merged.pdf' };
 
@@ -9,6 +10,9 @@ interface FileStore {
   /** Tier applied to newly dropped files; remembered across visits. */
   defaultTier: Tier;
   merge: MergeState;
+  /** Per-file upload limit, as the server reports it (GET /config). */
+  maxFileBytes: number;
+  setMaxFileBytes: (bytes: number) => void;
   setDefaultTier: (tier: Tier) => void;
   addFiles: (newFiles: FileItem[]) => void;
   removeFile: (id: string) => void;
@@ -24,6 +28,8 @@ export const useFiles = create<FileStore>()(
       files: [],
       defaultTier: 'balanced',
       merge: EMPTY_MERGE,
+      maxFileBytes: MAX_FILE_BYTES,
+      setMaxFileBytes: (maxFileBytes) => set({ maxFileBytes }),
       setDefaultTier: (defaultTier) => set({ defaultTier }),
       addFiles: (newFiles) => set((state) => ({ files: [...state.files, ...newFiles] })),
       removeFile: (id) =>

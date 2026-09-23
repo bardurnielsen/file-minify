@@ -124,9 +124,18 @@ case "$id" in
   *.png) echo "PASS  stored ext follows mime -> $id"; pass=$((pass+1));;
   *)     echo "FAIL  stored ext follows mime -> $id"; fail=$((fail+1));;
 esac
-head -c 60000000 /dev/zero > "$OUT/big.jpg"
-c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/upload" -F "files=@$OUT/big.jpg;type=image/jpeg")
-[ "$c" = "400" ] && { echo "PASS  60MB upload -> 400"; pass=$((pass+1)); } || { echo "FAIL  60MB upload -> $c"; fail=$((fail+1)); }
+# The limit is a per-server setting (MAX_FILE_MB), so test against whatever
+# this server reports rather than a fixed size.
+limit=$(curl -s "$API/config" | sed -n 's/.*"maxFileBytes":\([0-9]*\).*/\1/p')
+if [ -z "$limit" ]; then
+  echo "FAIL  /config reports no maxFileBytes"; fail=$((fail+1))
+else
+  over=$((limit + 1048576))
+  head -c "$over" /dev/zero > "$OUT/big.jpg"
+  c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/upload" -F "files=@$OUT/big.jpg;type=image/jpeg")
+  [ "$c" = "400" ] && { echo "PASS  upload over the $((limit / 1048576)) MB limit -> 400"; pass=$((pass+1)); } || { echo "FAIL  upload over the limit -> $c"; fail=$((fail+1)); }
+  rm -f "$OUT/big.jpg"
+fi
 
 # A foreign Origin must be refused outright, not merely denied the response
 # headers: a multipart POST is a simple request, so CORS alone would still let

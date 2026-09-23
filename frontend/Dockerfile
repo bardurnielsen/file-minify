@@ -21,8 +21,12 @@ FROM nginx:alpine
 # Copy built assets from build stage
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# Add custom nginx config
-COPY ./frontend/nginx.conf /etc/nginx/conf.d/default.conf
+# The config is a template rendered at startup (see nginx.conf.template), so the
+# upload limit and proxy timeout are Compose settings rather than a rebuild.
+# Only FM_* variables are substituted, never nginx's own $host and friends.
+ENV NGINX_ENVSUBST_FILTER=^FM_
+COPY ./frontend/nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY --chmod=755 ./frontend/nginx-limits.envsh /docker-entrypoint.d/16-nginx-limits.envsh
 
 # Expose port
 EXPOSE 80
