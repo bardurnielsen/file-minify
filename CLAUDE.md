@@ -9,9 +9,14 @@ single PDF. React + TypeScript frontend, Node/Express backend shelling out to
 FFmpeg, Ghostscript, ImageMagick and LibreOffice, all in Docker behind nginx.
 
 This repo began as a redesign of the first FileMinify, which is now retired
-(its repository was deleted on 2026-09-23). History up to `dbcf931` is that
+(its repository was deleted on 2026-09-23). History up to `f4d6b79` is that
 project's; everything after is the rework. Its last fixes (rate limiter,
-upload holes, smoke suite) live on here as `d692e10`, `1f27b28` and `761c106`.
+upload holes, smoke suite) live on here as `d96fa4c`, `53673ab` and `3f95c5c`.
+
+The history was rewritten once, on 2026-09-23, before the repo went public: a
+personal document committed by mistake early on was removed from every commit
+and author emails were normalised. Commit IDs before that date differ from any
+older clone or PR link. Security reports: see SECURITY.md.
 
 ## Running it
 
@@ -191,7 +196,7 @@ fixtures beside it. It needs the stack running and defaults to :4001; pass a
 base URL to point it elsewhere. It exits non-zero on failure.
 
 It covers upload, compression, conversion, merge, error handling, and a security block
-pinning the bugs fixed in `1f27b28` — format injection, `id` path traversal on
+pinning the bugs fixed in `53673ab` — format injection, `id` path traversal on
 the download and delete routes, MIME rejection, the upload size cap, and the
 same-origin check in both directions. Those last cases are regression tests: if
 one starts failing, a hole has reopened.
@@ -200,7 +205,11 @@ CI (`.github/workflows/docker-build.yml`) runs one job per image: `frontend`
 builds (and so type-checks and lints), `backend` builds, starts that exact image and runs
 the smoke suite. Each caches under its own `gha` scope - with a shared scope the
 two overwrote each other and the apt layer was rebuilt every run. Build contexts
-are trimmed per image by `<Dockerfile>.dockerignore`. Docs-only changes skip CI.
+are trimmed per image by `<Dockerfile>.dockerignore`. Docs-only pushes to `main`
+skip CI, but PRs always run it: `main` requires both checks, and a required
+check that never reports would block the PR. Actions are pinned to commit SHAs;
+Dependabot (`.github/dependabot.yml`) proposes updates for npm, the Docker base
+images and the actions weekly.
 
 `curl` needs an explicit `;type=<mime>` on `-F` uploads or the MIME allowlist
 rejects the file.

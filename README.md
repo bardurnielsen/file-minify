@@ -70,8 +70,8 @@ both images build and run inside Docker.
 ## Install
 
 ```bash
-git clone https://github.com/bardurnielsen/file-minify-redesign.git
-cd file-minify-redesign
+git clone https://github.com/bardurnielsen/file-minify.git
+cd file-minify
 docker compose up -d --build
 ```
 

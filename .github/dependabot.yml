@@ -1,0 +1,25 @@
+# Weekly update PRs for everything this repo depends on. Each one runs CI
+# (image builds plus the smoke suite) before it can be merged.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /            # frontend
+    schedule: { interval: weekly }
+    groups:
+      frontend-minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: npm
+    directory: /backend
+    schedule: { interval: weekly }
+    groups:
+      backend-minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: docker
+    directory: /frontend    # node:22-alpine build stage, nginx:alpine
+    schedule: { interval: weekly }
+  - package-ecosystem: docker
+    directory: /backend     # node:22-bookworm-slim
+    schedule: { interval: weekly }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
