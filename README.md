@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-<img alt="One drop of four files: a 43 MB video down to 1.3 MB, a 9.7 MB photo to 1.4 MB, a scanned PDF halved and a Word document turned into a smaller PDF, each labelled with what was done" src="docs/screenshots/results.png" width="760">
+<img alt="One drop of four files: a 43 MB video down to 1.3 MB, a 9.7 MB photo to 1.4 MB, a scanned PDF halved and a Word document turned into a smaller PDF, each labelled with what was done" src="docs/screenshots/results.png" width="820">
 </p>
 
 Drop files in and images, PDFs and documents are processed straight away; videos
@@ -39,7 +39,7 @@ encode, not playable everywhere), or aim at a target size instead — handy for
 getting a clip under an email attachment limit.
 
 <p align="center">
-<img alt="A dropped video waiting with its settings open: output format, quality, resolution, codec and target size, and a Compress button" src="docs/screenshots/video-settings.png" width="620">
+<img alt="A dropped video waiting with its settings open: output format, quality, resolution, codec and target size, and a Compress button" src="docs/screenshots/video-settings.png" width="700">
 </p>
 
 Office files become PDFs at the chosen tier, and every PDF Ghostscript writes is
@@ -65,7 +65,7 @@ nothing is merged and the response names the file, rather than quietly handing b
 a document with a piece missing.
 
 <p align="center">
-<img alt="The merge dialog: three files in page order with drag handles and arrows, a video listed as unable to become a PDF, and a file name field" src="docs/screenshots/merge.png" width="520">
+<img alt="The merge dialog: three files in page order with drag handles and arrows, a video listed as unable to become a PDF, and a file name field" src="docs/screenshots/merge.png" width="600">
 </p>
 
 **Labelled results** — a download's name says what was done to it, e.g.
@@ -100,9 +100,9 @@ docker compose up -d --build
 Then open **http://localhost:3051**. It works the same from a phone on your network.
 
 <p align="center">
-<img alt="The landing page: a large drop area with a quality control underneath" src="docs/screenshots/hero.png" width="520">
+<img alt="The landing page: a large drop area with a quality control underneath" src="docs/screenshots/hero.png" width="557">
 &nbsp;
-<img alt="The app on a phone: the savings summary and results for a video and a photo" src="docs/screenshots/phone.png" width="181">
+<img alt="The app on a phone: the savings summary and results for a video and a photo" src="docs/screenshots/phone.png" width="223">
 </p>
 
 The first build takes a while — the backend image installs LibreOffice, FFmpeg,
