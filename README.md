@@ -108,11 +108,18 @@ docker compose up -d --build backend    # backend only
 ```
 
 The frontend image build runs `tsc -b && eslint . && vite build`, so a successful
-build is also the type check and lint. The backend has an API smoke suite:
+build is also the type check and lint. Two test suites run against the running
+stack, and CI runs both on every PR:
 
 ```bash
-./backend/test/smoke.sh            # needs the stack running; defaults to :4001
+./backend/test/smoke.sh            # API: upload, compress, convert, merge, security
+./e2e/run.sh                       # browser: the whole app in Chromium (Playwright)
 ```
+
+The browser suite runs in Microsoft's Playwright image, so nothing is installed
+on the host; the first run downloads it (about 2.5 GB). Test videos are made
+by the backend's ffmpeg. `./e2e/run.sh -- --grep merge` runs a subset, and a
+failure leaves a trace in `e2e/test-results/` to open at trace.playwright.dev.
 
 Docker is the only supported way to run it: the backend needs FFmpeg, Ghostscript,
 ImageMagick and LibreOffice, and the images pin all of them.

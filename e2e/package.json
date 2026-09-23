@@ -1,0 +1,12 @@
+{
+  "name": "fileminify-e2e",
+  "private": true,
+  "description": "Browser tests for FileMinify. Run with ./e2e/run.sh against a running stack.",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}
