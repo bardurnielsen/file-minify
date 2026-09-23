@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useReducer } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
+import { XCircle, AlertTriangle, X } from 'lucide-react';
 
-type ToastType = 'success' | 'error' | 'warning' | 'info';
+type ToastType = 'error' | 'warning';
 
 interface Toast {
   id: string;
@@ -76,21 +76,17 @@ export function useToast() {
   return context;
 }
 
-export function Toaster() {
+function Toaster() {
   const { toasts, removeToast } = useToast();
 
   const icons = {
-    success: <CheckCircle className="w-5 h-5 text-emerald-500" />,
     error: <XCircle className="w-5 h-5 text-rose-500" />,
     warning: <AlertTriangle className="w-5 h-5 text-amber-500" />,
-    info: <Info className="w-5 h-5 text-zinc-500" />,
   };
 
   const backgrounds = {
-    success: 'border-emerald-200 dark:border-emerald-900',
     error: 'border-rose-200 dark:border-rose-900',
     warning: 'border-amber-200 dark:border-amber-900',
-    info: 'border-zinc-200 dark:border-zinc-700',
   };
 
   return (

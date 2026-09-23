@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState } from 'react';
 
-export type Page = 'home' | 'howitworks';
+type Page = 'home' | 'howitworks';
 
 interface NavigationContextType {
   currentPage: Page;

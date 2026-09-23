@@ -79,8 +79,6 @@ export interface MergeResult {
   size: number;
   pageCount: number;
   fileCount: number;
-  /** Local file ids that went in, in order. */
-  sourceIds: string[];
 }
 
 export interface MergeState {

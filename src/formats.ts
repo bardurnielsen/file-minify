@@ -59,6 +59,3 @@ export const formatsFor = (type: FileType, fileName: string): FormatOption[] => 
   KEEP_ORIGINAL,
   ...TARGETS[type].filter((option) => !isSourceFormat(option.value, fileName)),
 ];
-
-export const isFormatValidFor = (format: string, type: FileType, fileName: string) =>
-  formatsFor(type, fileName).some((option) => option.value === format);

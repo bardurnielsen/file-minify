@@ -273,7 +273,7 @@ const FileProcessor: React.FC = () => {
       const data = await mergeFiles(sources.map((f) => mergeSourceId(f)!));
       useFiles.getState().setMerge({
         status: 'done',
-        result: { ...data, sourceIds: sources.map((f) => f.id) },
+        result: data,
       });
     } catch (error) {
       const failedFileId =
