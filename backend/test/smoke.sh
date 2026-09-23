@@ -75,6 +75,24 @@ for spec in "compression:{\"quality\":\"medium\"}" "conversion:{\"format\":\"png
   esac
 done
 
+echo; echo "=== MERGE ==="
+r=$(curl -s -X POST "$API/merge" -H 'Content-Type: application/json' -d "{\"ids\":[\"$ID_fx_png\",\"$ID_fx_pdf\",\"$ID_fx_docx\"]}")
+check "merge png+pdf+docx" "$r" merge
+pages=$(printf '%s' "$r" | sed -n 's/.*"pageCount":\([0-9]*\).*/\1/p')
+[ "${pages:-0}" -ge 3 ] && { echo "PASS  merge page count -> $pages"; pass=$((pass+1)); } || { echo "FAIL  merge page count -> ${pages:-none}"; fail=$((fail+1)); }
+r=$(curl -s -X POST "$API/merge" -H 'Content-Type: application/json' -d "{\"ids\":[\"$ID_fx_png\",\"$ID_fx_mp4\"]}" -w ' %{http_code}')
+case "$r" in
+  *"\"failedId\":\"$ID_fx_mp4\""*400) echo "PASS  merge names unmergeable file -> 400"; pass=$((pass+1)) ;;
+  *) echo "FAIL  merge with video -> $(printf '%s' "$r" | head -c 160)"; fail=$((fail+1)) ;;
+esac
+r=$(curl -s -X POST "$API/merge" -H 'Content-Type: application/json' -d "{\"ids\":[\"$ID_fx_pdf\",\"$ID_locked\"]}" -w ' %{http_code}')
+case "$r" in
+  *"\"failedId\":\"$ID_locked\""*422) echo "PASS  merge names locked pdf -> 422"; pass=$((pass+1)) ;;
+  *) echo "FAIL  merge with locked pdf -> $(printf '%s' "$r" | head -c 160)"; fail=$((fail+1)) ;;
+esac
+c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/merge" -H 'Content-Type: application/json' -d "{\"ids\":[\"$ID_fx_png\"]}")
+[ "$c" = "400" ] && { echo "PASS  merge of one file -> 400"; pass=$((pass+1)); } || { echo "FAIL  merge of one file -> $c"; fail=$((fail+1)); }
+
 echo; echo "=== SECURITY REGRESSIONS ==="
 c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/compression/$ID_fx_mp4" -H 'Content-Type: application/json' -d '{"format":"mp4$(touch /app/PWNED_FMT)"}')
 [ "$c" = "400" ] && { echo "PASS  format injection -> 400"; pass=$((pass+1)); } || { echo "FAIL  format injection -> $c"; fail=$((fail+1)); }
