@@ -41,19 +41,37 @@ else
   # a clean synthetic picture would compress unrealistically well.
   NAME="generated ${SECONDS_LONG} s clip"
   ID="${TAG}.mp4"
+fi
+# Ctrl+C stops this script but not a process started with `docker compose
+# exec`, so the cleanup also kills anything still working on this run's files.
+cleanup() {
+  # Only ffmpeg processes naming this run's files - never the shell doing this.
+  docker compose exec -T backend sh -c "
+    for p in /proc/[0-9]*; do
+      cmd=\$(tr '\\0' ' ' < \$p/cmdline 2>/dev/null)
+      case \"\$cmd\" in ffmpeg*${TAG}*) kill \${p#/proc/} 2>/dev/null ;; esac
+    done
+    rm -f /app/temp/${ID} /app/temp/compressed-${TAG}.*" >/dev/null 2>&1
+  rm -rf "$OUT"
+}
+trap cleanup EXIT
+trap 'echo; echo "Interrupted - stopping the benchmark."; exit 130' INT TERM
+
+if [ $# -eq 0 ]; then
   echo "Generating a ${SECONDS_LONG} s 1080p HEVC clip at ~20 Mbps (this takes a moment)..."
+  # x265 asks the kernel to place each worker thread's memory (a NUMA
+  # optimisation). Newer Docker seccomp profiles refuse that call, so x265
+  # prints "set_mempolicy: Operation not permitted" once per thread and
+  # carries on. Harmless on a single-socket host; filtered so real errors
+  # still show.
   docker compose exec -T backend sh -c "ffmpeg -v error -y \
     -f lavfi -i testsrc2=s=1920x1080:r=30:d=${SECONDS_LONG} \
     -f lavfi -i sine=f=440:d=${SECONDS_LONG} \
     -vf noise=alls=6:allf=t -c:v libx265 -preset ultrafast -b:v 20M \
-    -x265-params log-level=error -tag:v hvc1 -c:a aac -b:a 128k -shortest /app/temp/${ID}" \
+    -x265-params log-level=error -tag:v hvc1 -c:a aac -b:a 128k -shortest /app/temp/${ID} \
+    2>/tmp/${TAG}.err; rc=\$?; grep -v set_mempolicy /tmp/${TAG}.err >&2; rm -f /tmp/${TAG}.err; exit \$rc" \
     || { echo "Could not generate the clip"; exit 1; }
 fi
-cleanup() {
-  docker compose exec -T backend sh -c "rm -f /app/temp/${ID} /app/temp/compressed-${TAG}.*" >/dev/null 2>&1
-  rm -rf "$OUT"
-}
-trap cleanup EXIT
 SIZE=$(docker compose exec -T backend stat -c%s "/app/temp/${ID}" | tr -d '\r')
 
 probe() { # probe <temp id> <entries>

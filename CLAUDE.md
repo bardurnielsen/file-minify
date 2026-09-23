@@ -120,6 +120,10 @@ solution file (`"files": []` plus references), and plain `tsc` checks zero files
   held (`FileItem.hold`, status `ready`) with its settings panel open until
   Compress is pressed: an encode takes minutes, can't be cancelled, and target
   size is the setting that matters most. Everything else starts on drop.
+- **`set_mempolicy: Operation not permitted` from x265 is harmless.** x265 asks
+  the kernel to place each worker thread's memory (a NUMA optimisation); newer
+  Docker seccomp profiles refuse that call without CAP_SYS_NICE, so it prints
+  one line per thread and carries on. Don't grant the capability to silence it.
 - **Office → PDF honours the tier.** The conversion route takes an optional
   `quality` (`low|medium|high`) for Office files and runs the LibreOffice PDF
   through Ghostscript at that level, keeping whichever is smaller. Other
