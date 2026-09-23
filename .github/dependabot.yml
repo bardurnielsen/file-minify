@@ -32,6 +32,10 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "@eslint/js"
         update-types: ["version-update:semver-major"]
+      # eslint-plugin-react-hooks 7's React Compiler rules flag four patterns
+      # to refactor first; listed on #25.
+      - dependency-name: eslint-plugin-react-hooks
+        update-types: ["version-update:semver-major"]
   # The browser tests' runner; run.sh picks the Playwright image matching
   # this version, so a bump here updates the browsers too.
   - package-ecosystem: npm
