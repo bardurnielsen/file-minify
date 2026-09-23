@@ -13,7 +13,7 @@
     "@radix-ui/react-slider": "^1.4.7",
     "file-selector": "^5.0.1",
     "framer-motion": "^11.0.8",
-    "lucide-react": "^0.344.0",
+    "lucide-react": "^1.47.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-dropzone": "^20.1.2",
