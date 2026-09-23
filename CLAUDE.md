@@ -8,8 +8,10 @@ FileMinify compresses and converts files, and merges anything printable into a
 single PDF. React + TypeScript frontend, Node/Express backend shelling out to
 FFmpeg, Ghostscript, ImageMagick and LibreOffice, all in Docker behind nginx.
 
-This repo is a redesign of the original FileMinify. It shares history up to
-`dbcf931`; everything after that is the rework.
+This repo began as a redesign of the first FileMinify, which is now retired
+(its repository was deleted on 2026-09-23). History up to `dbcf931` is that
+project's; everything after is the rework. Its last fixes (rate limiter,
+upload holes, smoke suite) live on here as `d692e10`, `1f27b28` and `761c106`.
 
 ## Running it
 
@@ -23,8 +25,9 @@ docker compose up -d --build backend    # after a backend change
 docker compose logs --tail=30 backend
 ```
 
-App on **http://localhost:3051**, API on **4001**. The offset from 3050/4000 is
-deliberate so this can run beside the original.
+App on **http://localhost:3051**, API on **4001**. The offset from 3050/4000
+dates from running beside the first version; the ports stay as they are, since
+deployments and bookmarks use them.
 
 The frontend image build runs `tsc -b && eslint . && vite build`, so a clean build
 is the type check and lint. It must be `tsc -b`: the root tsconfig.json is a
