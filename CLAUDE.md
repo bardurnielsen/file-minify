@@ -195,6 +195,9 @@ Two suites, both against a running stack and both in CI (jobs `backend` and
   and makes its test videos with the backend's ffmpeg (`e2e/make-media.sh`).
   Every test also fails on any browser console error. Each of its bug tests
   was checked by re-introducing the bug and watching it fail.
+- `e2e/screenshots/update.sh` regenerates the README screenshots
+  (`docs/screenshots/*-{light,dark}.png`) from demo files it makes with the
+  backend's tools. Re-run it after a visible UI change; don't edit the PNGs.
 
 Per-server settings (`MAX_FILE_MB`, `PROCESS_TIMEOUT_MIN`, `BACKEND_CPU_SHARES`,
 `TEMP_DIR`) come from an optional `.env` beside `docker-compose.yml`; see
