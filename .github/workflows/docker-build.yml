@@ -3,12 +3,35 @@ name: CI
 on:
   push:
     branches: [ main ]
+    paths-ignore: &docs
+      - '**.md'
+      - 'screenshots/**'
+      - 'LICENSE'
   pull_request:
     branches: [ main ]
+    paths-ignore: *docs
 
+# A new push to a PR makes the run for the previous one pointless. Runs on main
+# are left to finish: they are what fills the cache that PR runs read from
+# (caches written on a PR ref are visible to that PR only).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+# One job per image, not per stage. The two images don't depend on each other,
+# so they build in parallel; the backend job then tests the exact image it just
+# built rather than a second build of it.
+#
+# Each image caches under its own scope. With the default shared scope the two
+# builds overwrote each other's cache, so the backend's apt layer (FFmpeg,
+# LibreOffice) was rebuilt and re-uploaded on every run.
 jobs:
-  build:
+  frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -17,15 +40,34 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       # Build only: this repo publishes no images, so it needs no registry
-      # credentials. The point is to catch a broken build, not to ship.
+      # credentials. The image build runs `tsc && vite build`, so this is also
+      # the type check.
       - name: Build frontend
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./frontend/Dockerfile
           push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
+
+  backend:
+    runs-on: ubuntu-latest
+    # FFmpeg has hung this app three times (CLAUDE.md, invariant 3). A hang
+    # should fail the run, not hold a runner for the 6-hour default.
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Compose names the image after the project, which is the checkout
+      # directory, so ask it rather than hard-coding the name.
+      - name: Resolve image name
+        id: image
+        run: echo "name=$(docker compose config --images | grep -- '-backend$')" >> "$GITHUB_OUTPUT"
 
       - name: Build backend
         uses: docker/build-push-action@v6
@@ -33,20 +75,16 @@ jobs:
           context: .
           file: ./backend/Dockerfile
           push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          load: true
+          tags: ${{ steps.image.outputs.name }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
 
-  smoke:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # The backend is the only service the suite talks to; the frontend is
-      # covered by the build job above.
       - name: Start backend
-        run: docker compose up -d --build backend
+        run: docker compose up -d --no-build backend
 
+      # Polled here rather than with `up --wait`: the compose healthcheck runs
+      # every 30s, so waiting on it would add up to half a minute.
       - name: Wait for /health
         run: |
           for i in $(seq 1 60); do

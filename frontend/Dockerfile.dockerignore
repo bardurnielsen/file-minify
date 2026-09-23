@@ -1,0 +1,15 @@
+# Build context for frontend/Dockerfile only (BuildKit reads <Dockerfile>.dockerignore
+# in place of the root one). The build stage does `COPY . .`, so anything left in
+# here becomes an input to `npm run build`: a backend-only change, or any commit
+# at all via .git, would otherwise rebuild the frontend for nothing.
+.git
+.github
+.bolt
+.claude
+**/node_modules
+dist
+backend
+screenshots
+*.md
+LICENSE
+docker-compose.yml
