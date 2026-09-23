@@ -13,3 +13,5 @@ screenshots
 *.md
 LICENSE
 docker-compose.yml
+# A host copy would let `tsc -b` decide the project is up to date and skip the check.
+*.tsbuildinfo

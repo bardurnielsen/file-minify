@@ -1,4 +1,3 @@
-import React from 'react';
 import { MotionConfig } from 'framer-motion';
 import { ThemeProvider } from './components/theme-provider';
 import { ToastProvider } from './components/ui/toaster';

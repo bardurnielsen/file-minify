@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileRejection, useDropzone } from 'react-dropzone';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, HTMLMotionProps, motion } from 'framer-motion';
 import { Download, Layers, RefreshCw, Trash2 } from 'lucide-react';
 import { FileItem, ProcessingOption, Tier } from '../../types';
 import { KEEP_ORIGINAL } from '../../formats';
@@ -353,7 +353,11 @@ const FileProcessor: React.FC = () => {
       </div>
 
       <motion.section
-        {...getRootProps()}
+        // react-dropzone types its props as every HTML attribute, and the DOM
+        // onDrag*/onAnimation* handler types clash with framer-motion's gesture
+        // props of the same names. Dropzone never sets those, so only the types
+        // disagree.
+        {...(getRootProps() as HTMLMotionProps<'section'>)}
         layout
         className={cn(
           'relative rounded-[24px] border bg-white shadow-card outline-none dark:bg-zinc-900 dark:shadow-card-dark',
