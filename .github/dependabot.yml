@@ -17,6 +17,11 @@ updates:
       # migration to do deliberately, not a weekly bump.
       - dependency-name: tailwindcss
         update-types: ["version-update:semver-major"]
+  # The browser tests' runner; run.sh picks the Playwright image matching
+  # this version, so a bump here updates the browsers too.
+  - package-ecosystem: npm
+    directory: /e2e
+    schedule: { interval: weekly }
   - package-ecosystem: npm
     directory: /backend
     schedule: { interval: weekly }

@@ -8,6 +8,7 @@
 **/node_modules
 dist
 backend
+e2e
 *.md
 LICENSE
 docker-compose.yml

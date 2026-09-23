@@ -182,6 +182,20 @@ solution file (`"files": []` plus references), and plain `tsc` checks zero files
 
 ## Testing
 
+Two suites, both against a running stack and both in CI (jobs `backend` and
+`e2e`, required on `main`):
+
+- `backend/test/smoke.sh` - the API: every route, the error paths and the
+  security regressions (below).
+- `e2e/run.sh` - the browser suite (Playwright, `e2e/tests/`): drop-and-process,
+  held videos and their settings, labelled download names, merge, sliders and
+  the format picker, untyped uploads, the drag overlay, the video queue, the
+  settings panel's exit. It runs in the Playwright image whose tag run.sh reads
+  from `e2e/package.json` (pinned exactly, so a Dependabot bump moves both),
+  and makes its test videos with the backend's ffmpeg (`e2e/make-media.sh`).
+  Every test also fails on any browser console error. Each of its bug tests
+  was checked by re-introducing the bug and watching it fail.
+
 Per-server settings (`MAX_FILE_MB`, `PROCESS_TIMEOUT_MIN`, `BACKEND_CPU_SHARES`,
 `TEMP_DIR`) come from an optional `.env` beside `docker-compose.yml`; see
 `.env.example`. nginx's config is a template (`frontend/nginx.conf.template`)

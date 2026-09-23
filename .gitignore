@@ -23,3 +23,8 @@ dist
 # Uploads and results when TEMP_DIR points inside the checkout (the example in
 # .env.example does). User files; never commit them.
 /temp/
+
+# Browser tests: generated videos and reports
+e2e/.media/
+e2e/test-results/
+e2e/playwright-report/
