@@ -47,6 +47,23 @@ case "$r" in
   *'"id":"compressed-'*'.png"'*) echo "PASS  png with no format stays png"; pass=$((pass+1)) ;;
   *) echo "FAIL  png with no format -> $(printf '%s' "$r" | head -c 160)"; fail=$((fail+1)) ;;
 esac
+# A phone photo stored sideways with an EXIF Orientation tag must come out
+# upright: the tag is dropped with the metadata, so the pixels must be turned.
+ID_rot=$(up fx-rotated.jpg image/jpeg)
+r=$(curl -s -X POST "$API/compression/$ID_rot" -H 'Content-Type: application/json' -d '{"quality":70,"format":"original"}')
+rid=$(printf '%s' "$r" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+curl -s -o "$OUT/rot.jpg" "$API/compression/download/$rid"
+case "$(file -b "$OUT/rot.jpg")" in
+  *20x40*) echo "PASS  rotated photo comes out upright (20x40)"; pass=$((pass+1)) ;;
+  *) echo "FAIL  rotated photo -> $(file -b "$OUT/rot.jpg" | grep -o '[0-9]*x[0-9]*' | tail -1)"; fail=$((fail+1)) ;;
+esac
+# Compression reports what it did (the file name and result row are built
+# from it). A PNG reliably shrinks, so it is never the kept-original case.
+r=$(curl -s -X POST "$API/compression/$ID_fx_png" -H 'Content-Type: application/json' -d '{"quality":70,"format":"original"}')
+case "$r" in
+  *'"details":{"quality":70}'*) echo "PASS  result reports its details"; pass=$((pass+1)) ;;
+  *) echo "FAIL  result details -> $(printf '%s' "$r" | head -c 200)"; fail=$((fail+1)) ;;
+esac
 check "compress pdf (med)"  "$(curl -s -X POST "$API/compression/$ID_fx_pdf" -H 'Content-Type: application/json' -d '{"quality":"medium"}')" compression
 check "compress mp4 (med)"  "$(curl -s -X POST "$API/compression/$ID_fx_mp4" -H 'Content-Type: application/json' -d '{"quality":"medium","format":"mp4"}')" compression
 check "compress mp4 (low)"  "$(curl -s -X POST "$API/compression/$ID_fx_mp4" -H 'Content-Type: application/json' -d '{"quality":"low","format":"original"}')" compression

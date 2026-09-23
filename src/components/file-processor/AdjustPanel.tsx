@@ -48,7 +48,7 @@ const CODEC_HINT: Record<VideoCodec, string> = {
 
 const RESOLUTIONS: { value: VideoResolution | 'auto'; label: string }[] = [
   { value: 'auto', label: 'Auto' },
-  { value: 'source', label: 'Original' },
+  { value: '1440', label: '1440p' },
   { value: '1080', label: '1080p' },
   { value: '720', label: '720p' },
   { value: '480', label: '480p' },
@@ -57,11 +57,10 @@ const RESOLUTIONS: { value: VideoResolution | 'auto'; label: string }[] = [
 const AUTO_RESOLUTION: Record<Tier, string> = {
   small: 'Auto: up to 720p for this quality.',
   balanced: 'Auto: up to 1080p for this quality.',
-  high: 'Auto: kept at the original size for this quality.',
+  high: 'Auto: up to 1440p for this quality.',
 };
 
 const resolutionHint = (o: ProcessingOption) => {
-  if (o.resolution === 'source') return 'Kept at the original size.';
   if (o.resolution) return `Shortest side at most ${o.resolution} px. Never enlarged.`;
   return o.targetSizeMb ? 'Auto: picked to suit the target size.' : AUTO_RESOLUTION[o.tier];
 };

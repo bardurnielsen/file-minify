@@ -112,7 +112,10 @@ solution file (`"files": []` plus references), and plain `tsc` checks zero files
   the original was kept. Each tier now also caps peak bitrate at a share of the
   source's (45/55/80% for H.264, a quarter lower for H.265, scaled down further
   when the picture is), and by default caps the short side (720p / 1080p /
-  original). A `resolution` option (`source|1080|720|480`) overrides that; with
+  1440p). Nothing is ever kept at 4K: 1440p is the ceiling for every path,
+  including target size and an explicit `resolution` (`1440|1080|720|480`;
+  `source` is still accepted and means 1440). On the test server a 4K Best encode
+  ran at 0.08x real time. A `resolution` option overrides the tier's cap; with
   a target size, the resolution is picked from the bitrate the target allows.
   `codec: 'h265'` is MP4/MOV only and tagged `hvc1` for Apple players. See
   `VIDEO_SETTINGS` in `routes/compression.js`.
@@ -124,6 +127,17 @@ solution file (`"files": []` plus references), and plain `tsc` checks zero files
   the kernel to place each worker thread's memory (a NUMA optimisation); newer
   Docker seccomp profiles refuse that call without CAP_SYS_NICE, so it prints
   one line per thread and carries on. Don't grant the capability to silence it.
+- **Results describe themselves.** `POST /compression` returns `details` (video:
+  preset, codec, output and source short side; images: quality; PDFs: preset),
+  null when the original was kept. `outputNameFor` builds the download name from
+  it and `describeResult` the row's line; the backend writes the same into the
+  file (`-metadata comment` on video, EXIF ImageDescription - ASCII only - on
+  images, Producer on repacked PDFs). Video output drops all source metadata
+  (`-map_metadata -1`), GPS included; Sharp already drops it for images.
+- **Photos are auto-oriented** (`autoOrient()` in Sharp, `-auto-orient` for
+  image→PDF). Sharp strips the EXIF Orientation tag with the rest of the
+  metadata, so without it a phone's portrait photo came out sideways. Pinned in
+  smoke by `fx-rotated.jpg`.
 - **Office → PDF honours the tier.** The conversion route takes an optional
   `quality` (`low|medium|high`) for Office files and runs the LibreOffice PDF
   through Ghostscript at that level, keeping whichever is smaller. Other

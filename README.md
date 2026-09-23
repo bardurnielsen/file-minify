@@ -16,7 +16,8 @@ The tier maps onto whatever each encoder actually understands, so it does someth
 real in every case rather than sending a number that gets ignored.
 
 For video each tier also sets a resolution (*Smaller* up to 720p, *Balanced* up to
-1080p, *Best quality* the original, never enlarged) and caps the bitrate at a share
+1080p, *Best quality* up to 1440p, never enlarged - nothing is kept at 4K, since a
+smaller file is the point) and caps the bitrate at a share
 of the source's, so every tier is a real step down even for an already-lean clip.
 Per file you can pick the resolution yourself, switch to H.265 (MP4/MOV; about a
 quarter smaller, slower to encode, not playable everywhere), or aim at a target
@@ -43,6 +44,14 @@ dragging. Images, PDFs and Office documents can all take part; video cannot beco
 a PDF and is listed as excluded with the reason. If any one file fails to convert,
 nothing is merged and the response names the file, rather than quietly handing back
 a document with a piece missing.
+
+**Labelled results** — a download's name says what was done to it, e.g.
+`clip-720p-h265-smaller.mp4`, `clip-720p-h264-9mb.mp4` or `scan-balanced.pdf`. The
+same goes inside the file (a comment in videos, the description in images, the
+Producer in PDFs) and on the result row ("4K HEVC → 720p H.265 · Smaller"). Nothing
+else from the source's metadata is kept, so a phone's GPS location does not travel
+with a file you email. Phone photos are turned upright before their orientation tag
+is dropped.
 
 **Honest results** — when re-encoding would make a file *larger* (already-optimised
 PDFs and video often do), the original is kept and reported as-is instead of being
@@ -116,7 +125,7 @@ stripping the prefix.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `POST` | `/upload` | multipart, field `files`, up to 10 files of 50 MB. Returns an `id` per file |
-| `POST` | `/compression/:id` | `{quality, format}`; for video also `maxSize` (target MB), `codec` (`h264`\|`h265`) and `resolution` (`source`\|`1080`\|`720`\|`480`) → sizes and ratio |
+| `POST` | `/compression/:id` | `{quality, format}`; for video also `maxSize` (target MB), `codec` (`h264`\|`h265`) and `resolution` (`1440`\|`1080`\|`720`\|`480`) → sizes and ratio |
 | `GET` | `/compression/download/:id` | the compressed bytes |
 | `POST` | `/conversion/:id` | `{format}`, plus `quality` for Office → PDF → sizes and formats |
 | `GET` | `/conversion/download/:id` | the converted bytes |

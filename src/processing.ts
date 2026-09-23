@@ -1,5 +1,5 @@
 import { canBecomePdf, extensionOf, KEEP_ORIGINAL } from './formats';
-import { FileItem, FileType, ProcessingOption, Route, Tier, VideoResolution } from './types';
+import { FileItem, FileResult, FileType, ProcessingOption, ResultDetails, Route, Tier, VideoResolution } from './types';
 
 /** Until GET /config answers; the server's MAX_FILE_MB is the real limit. */
 export const MAX_FILE_BYTES = 50 * 1024 * 1024;
@@ -85,14 +85,71 @@ export const sameRequest = (type: FileType, a: ProcessingOption, b: ProcessingOp
 export const isStale = (file: FileItem) =>
   file.status === 'done' && !!file.result && !sameRequest(file.type, file.options, file.result.options);
 
-export const outputNameFor = (name: string, type: FileType, options: ProcessingOption) => {
+// How a result is named and described. Video is named by what the backend
+// reports it actually produced (resolution after the never-enlarge cap, codec),
+// not by what was asked for.
+const PRESET_NAME: Record<'low' | 'medium' | 'high', { file: string; label: string }> = {
+  low: { file: 'smaller', label: 'Smaller' },
+  medium: { file: 'balanced', label: 'Balanced' },
+  high: { file: 'best', label: 'Best quality' },
+};
+const CODEC_NAME: Record<string, string> = { h264: 'H.264', h265: 'H.265', hevc: 'HEVC', vp9: 'VP9', av1: 'AV1' };
+/** By the short side, so portrait and landscape read the same. */
+const resolutionName = (shortSide: number) => (shortSide >= 2160 ? '4K' : `${shortSide}p`);
+
+const presetFile = (d: ResultDetails) =>
+  d.preset === 'target' ? `${d.targetMb}mb` : d.preset ? PRESET_NAME[d.preset].file : undefined;
+
+/**
+ * The downloaded file's name, e.g. clip-720p-h265-smaller.mp4 or
+ * scan-balanced.pdf. Conversions are named by their new format; a kept
+ * original keeps its own name, since that is what it is.
+ */
+export const outputNameFor = (name: string, type: FileType, result: FileResult) => {
   const dot = name.lastIndexOf('.');
   const base = dot > 0 ? name.slice(0, dot) : name;
   const ext = dot > 0 ? name.slice(dot + 1) : '';
-  if (routeFor(type, options) === 'conversion') {
-    return `${base}.${targetFormatFor(type, name, options)}`;
+  const withExt = (stem: string) => (ext ? `${stem}.${ext}` : stem);
+  if (result.route === 'conversion') {
+    return `${base}.${targetFormatFor(type, name, result.options)}`;
   }
-  return ext ? `${base}-min.${ext}` : `${base}-min`;
+  const d = result.details;
+  if (result.unchanged || !d) return withExt(result.unchanged ? base : `${base}-min`);
+  const parts: string[] = [];
+  if (type === 'video') {
+    if (d.shortSide) parts.push(resolutionName(d.shortSide).toLowerCase());
+    if (d.codec) parts.push(d.codec);
+    const preset = presetFile(d);
+    if (preset) parts.push(preset);
+  } else if (type === 'image') {
+    // The tier's name unless the quality was fine-tuned by hand.
+    parts.push(result.options.quality !== undefined ? `q${d.quality}` : PRESET_NAME[LEVEL[result.options.tier]].file);
+  } else {
+    const preset = presetFile(d);
+    if (preset) parts.push(preset);
+  }
+  return withExt(parts.length ? `${base}-${parts.join('-')}` : `${base}-min`);
+};
+
+/** One line for the result row, e.g. "4K HEVC → 720p H.265 · Smaller". */
+export const describeResult = (type: FileType, result: FileResult): string | null => {
+  const d = result.details;
+  if (result.route !== 'compression' || result.unchanged || !d) return null;
+  const preset =
+    d.preset === 'target' ? `Target ${d.targetMb} MB` : d.preset ? PRESET_NAME[d.preset].label : null;
+  if (type === 'video') {
+    const from = [d.sourceShortSide && resolutionName(d.sourceShortSide), d.sourceCodec && (CODEC_NAME[d.sourceCodec] ?? d.sourceCodec.toUpperCase())]
+      .filter(Boolean)
+      .join(' ');
+    const to = [d.shortSide && resolutionName(d.shortSide), d.codec && CODEC_NAME[d.codec]].filter(Boolean).join(' ');
+    return [from && to ? `${from} → ${to}` : to, preset].filter(Boolean).join(' · ');
+  }
+  if (type === 'image') {
+    return result.options.quality !== undefined
+      ? `Quality ${d.quality}`
+      : `${PRESET_NAME[LEVEL[result.options.tier]].label} · quality ${d.quality}`;
+  }
+  return preset;
 };
 
 /** Short, human description of what will happen to a file. */
@@ -111,7 +168,7 @@ export const describePlan = (file: FileItem) => {
   return `Compress · ${tierLabel(options.tier)}${videoExtras}`;
 };
 
-const resolutionLabel = (r: VideoResolution) => (r === 'source' ? 'original size' : `${r}p`);
+const resolutionLabel = (r: VideoResolution) => `${r}p`;
 
 // The backend only muxes HEVC into MP4 and MOV.
 const HEVC_EXTS = ['mp4', 'mov'];

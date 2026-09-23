@@ -53,7 +53,9 @@ const convertImageToPDF = async (
   const outputPath = path.join(outDir, `${path.basename(filePath, path.extname(filePath))}.pdf`);
   try {
     const input = firstFrameOnly ? `${filePath}[0]` : filePath;
-    await run('convert', [input, outputPath]);
+    // -auto-orient: a phone photo is stored sideways with an EXIF Orientation
+    // tag, which a PDF page does not carry, so turn the pixels upright first.
+    await run('convert', [input, '-auto-orient', outputPath]);
     if (!fs.existsSync(outputPath)) {
       throw new Error('Conversion failed: Output file not found');
     }
@@ -77,10 +79,14 @@ const needsPassword = (output) => /requires a password/i.test(String(output || '
 // is lossless. Best effort: pdf-lib refuses encrypted PDFs and may not parse
 // every file, and either way the Ghostscript output is kept as it is. The
 // repack only replaces it when it comes out smaller.
-const repackPDF = async (filePath) => {
+const repackPDF = async (filePath, label) => {
   try {
     const src = fs.readFileSync(filePath);
     const doc = await PDFDocument.load(src, { updateMetadata: false });
+    // The Producer field names the tool that wrote the file, which is what
+    // this is - shown in a viewer's document properties. Title, author and
+    // subject belong to the document and are left alone.
+    if (label) doc.setProducer(label);
     const out = await doc.save({ useObjectStreams: true });
     if (out.length < src.length) {
       fs.writeFileSync(filePath, out);
@@ -95,7 +101,7 @@ const repackPDF = async (filePath) => {
 // else is medium), then repack it. -dBATCH/-dNOPAUSE keep it non-interactive,
 // and it overwrites an existing output silently.
 const compressPDF = async (filePath, options) => {
-  const { quality = 'medium' } = options; // 'low' | 'medium' | 'high'
+  const { quality = 'medium', label } = options; // quality: 'low' | 'medium' | 'high'
   const outputPath = path.join(
     path.dirname(filePath),
     `compressed-${path.basename(filePath)}`
@@ -131,7 +137,7 @@ const compressPDF = async (filePath, options) => {
     fs.rmSync(outputPath, { force: true });
     throw new AppError(PASSWORD_PROTECTED, 422);
   }
-  await repackPDF(outputPath);
+  await repackPDF(outputPath, label);
   return outputPath;
 };
 
