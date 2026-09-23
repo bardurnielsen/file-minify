@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileRejection, useDropzone } from 'react-dropzone';
+import { fromEvent } from 'file-selector';
 import { AnimatePresence, HTMLMotionProps, motion } from 'framer-motion';
 import { Download, Layers, RefreshCw, Trash2 } from 'lucide-react';
 import { FileItem, FileType, ProcessingOption, Tier } from '../../types';
@@ -70,6 +71,19 @@ const saveBlob = (blob: Blob, name: string) => {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
+
+// Some browsers hand over files with an empty type (a .docx on Windows without
+// Office, some Android pickers). react-dropzone used to fill it in from the
+// extension; since v18 that table isn't bundled, so a blank type went up as
+// application/octet-stream and the backend's allowlist refused it. The map is
+// built from ACCEPT, so it covers exactly what the app takes.
+const MIME_BY_EXTENSION = new Map(
+  Object.entries(ACCEPT).flatMap(([mime, exts]) =>
+    exts.map((ext) => [ext.replace(/^\./, ''), mime] as [string, string])
+  )
+);
+const getFilesFromEvent = (event: Parameters<typeof fromEvent>[0]) =>
+  fromEvent(event, { mimeTypes: MIME_BY_EXTENSION });
 
 const rejectionMessage = (r: FileRejection) => {
   const code = r.errors[0]?.code;
@@ -198,6 +212,7 @@ const FileProcessor: React.FC = () => {
 
   const { getRootProps, getInputProps, open, isDragActive, isDragReject } = useDropzone({
     onDrop: handleDrop,
+    getFilesFromEvent,
     accept: ACCEPT,
     maxSize: maxFileBytes,
     multiple: true,

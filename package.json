@@ -11,11 +11,12 @@
     "@radix-ui/react-dialog": "^1.1.23",
     "@radix-ui/react-select": "^2.3.7",
     "@radix-ui/react-slider": "^1.4.7",
+    "file-selector": "^5.0.1",
     "framer-motion": "^11.0.8",
     "lucide-react": "^0.344.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-dropzone": "^14.2.3",
+    "react-dropzone": "^20.1.2",
     "zustand": "^4.5.2"
   },
   "devDependencies": {
