@@ -97,6 +97,14 @@ for spec in "compression:{\"quality\":\"medium\"}" "conversion:{\"format\":\"png
   esac
 done
 
+# A POST without a JSON body is answered, not crashed on: Express 5 leaves
+# req.body undefined there, where Express 4 gave {}.
+for route in compression conversion; do
+  id=$ID_fx_png; [ "$route" = conversion ] && id=$ID_fx_pdf
+  c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/$route/$id" -H 'Content-Type: text/plain' -d 'x')
+  [ "$c" != "500" ] && { echo "PASS  $route without a JSON body -> $c"; pass=$((pass+1)); } || { echo "FAIL  $route without a JSON body -> 500"; fail=$((fail+1)); }
+done
+
 echo; echo "=== MERGE ==="
 r=$(curl -s -X POST "$API/merge" -H 'Content-Type: application/json' -d "{\"ids\":[\"$ID_fx_png\",\"$ID_fx_pdf\",\"$ID_fx_docx\"]}")
 check "merge png+pdf+docx" "$r" merge
