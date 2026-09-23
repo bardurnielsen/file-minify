@@ -245,8 +245,10 @@ const FileRow: React.FC<FileRowProps> = ({ file, onDownload, onRemove, onRerun, 
             <div className="mt-1.5">
               <SavingsBar before={file.size} after={result.outputSize} />
             </div>
+            {/* Wraps rather than truncating: on a phone it is the useful line
+                ("4K HEVC -> 720p H.265 - Smaller") that would be cut off. */}
             {describeResult(file.type, result) && (
-              <div className="mt-1 truncate text-xs text-zinc-400 dark:text-zinc-500">
+              <div className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
                 {describeResult(file.type, result)}
               </div>
             )}

@@ -1,9 +1,24 @@
-# FileMinify
+<h1 align="center">FileMinify</h1>
 
-A self-hosted web app for shrinking and converting files, and for merging anything
-printable into a single PDF. Drop files in and images, PDFs and documents are
-processed straight away; videos wait for one click, so you can aim for a file size
-or pick a resolution first.
+<p align="center">
+  <strong>Smaller files. Nothing to fiddle with.</strong><br>
+  A self-hosted web app that compresses images, video and PDFs, turns Office documents
+  into PDFs, and merges anything printable into one PDF.
+</p>
+
+<p align="center">
+  <a href="https://github.com/bardurnielsen/file-minify/actions/workflows/docker-build.yml"><img alt="CI" src="https://github.com/bardurnielsen/file-minify/actions/workflows/docker-build.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-blue"></a>
+  <img alt="Runs in Docker" src="https://img.shields.io/badge/runs%20in-Docker-2496ED">
+</p>
+
+<p align="center">
+<img alt="One drop of four files: a 43 MB video down to 1.3 MB, a 9.7 MB photo to 1.4 MB, a scanned PDF halved and a Word document turned into a smaller PDF, each labelled with what was done" src="docs/screenshots/results.png" width="820">
+</p>
+
+Drop files in and images, PDFs and documents are processed straight away; videos
+wait for one click, so you can aim for a file size or pick a resolution first. Every
+result says what was done to it, and nothing leaves the machine you run it on.
 
 Frontend is React + TypeScript, backend is Node/Express wrapping FFmpeg,
 Ghostscript, ImageMagick, Sharp and LibreOffice. Everything runs in Docker.
@@ -16,12 +31,16 @@ The tier maps onto whatever each encoder actually understands, so it does someth
 real in every case rather than sending a number that gets ignored.
 
 For video each tier also sets a resolution (*Smaller* up to 720p, *Balanced* up to
-1080p, *Best quality* up to 1440p, never enlarged - nothing is kept at 4K, since a
-smaller file is the point) and caps the bitrate at a share
-of the source's, so every tier is a real step down even for an already-lean clip.
-Per file you can pick the resolution yourself, switch to H.265 (MP4/MOV; about a
-quarter smaller, slower to encode, not playable everywhere), or aim at a target
-size instead — handy for getting a clip under an email attachment limit.
+1080p, *Best quality* up to 1440p, never enlarged — nothing is kept at 4K, since a
+smaller file is the point) and caps the bitrate at a share of the source's, so every
+tier is a real step down even for an already-lean clip. Per file you can pick the
+resolution yourself, switch to H.265 (MP4/MOV; about a quarter smaller, slower to
+encode, not playable everywhere), or aim at a target size instead — handy for
+getting a clip under an email attachment limit.
+
+<p align="center">
+<img alt="A dropped video waiting with its settings open: output format, quality, resolution, codec and target size, and a Compress button" src="docs/screenshots/video-settings.png" width="700">
+</p>
 
 Office files become PDFs at the chosen tier, and every PDF Ghostscript writes is
 then repacked losslessly into compressed object streams.
@@ -45,6 +64,10 @@ a PDF and is listed as excluded with the reason. If any one file fails to conver
 nothing is merged and the response names the file, rather than quietly handing back
 a document with a piece missing.
 
+<p align="center">
+<img alt="The merge dialog: three files in page order with drag handles and arrows, a video listed as unable to become a PDF, and a file name field" src="docs/screenshots/merge.png" width="600">
+</p>
+
 **Labelled results** — a download's name says what was done to it, e.g.
 `clip-720p-h265-smaller.mp4`, `clip-720p-h264-9mb.mp4` or `scan-balanced.pdf`. The
 same goes inside the file (a comment in videos, the description in images, the
@@ -59,8 +82,7 @@ presented as a saving. A PDF that needs a password to open is refused with a cle
 error rather than coming back as a blank page.
 
 Files are processed in place and deleted by an hourly sweep once they are an hour
-old. There is no account,
-no database, and nothing leaves the machine you run it on.
+old. There is no account, no database, and nothing leaves the machine you run it on.
 
 ## Requirements
 
@@ -75,7 +97,13 @@ cd file-minify
 docker compose up -d --build
 ```
 
-Then open **http://localhost:3051**.
+Then open **http://localhost:3051**. It works the same from a phone on your network.
+
+<p align="center">
+<img alt="The landing page: a large drop area with a quality control underneath" src="docs/screenshots/hero.png" width="557">
+&nbsp;
+<img alt="The app on a phone: the savings summary and results for a video and a photo" src="docs/screenshots/phone.png" width="223">
+</p>
 
 The first build takes a while — the backend image installs LibreOffice, FFmpeg,
 Ghostscript and ImageMagick, around 970 MB of packages. Later builds are cached and
@@ -120,6 +148,10 @@ The browser suite runs in Microsoft's Playwright image, so nothing is installed
 on the host; the first run downloads it (about 2.5 GB). Test videos are made
 by the backend's ffmpeg. `./e2e/run.sh -- --grep merge` runs a subset, and a
 failure leaves a trace in `e2e/test-results/` to open at trace.playwright.dev.
+
+The screenshots in this README are generated, not taken by hand:
+`./e2e/screenshots/update.sh` rebuilds all of them from the running stack with demo
+files, so they can be refreshed whenever the UI changes.
 
 Docker is the only supported way to run it: the backend needs FFmpeg, Ghostscript,
 ImageMagick and LibreOffice, and the images pin all of them.
