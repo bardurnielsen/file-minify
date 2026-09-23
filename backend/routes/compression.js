@@ -305,7 +305,9 @@ router.post('/:id', async (req, res, next) => {
     if (!isSafeId(id)) {
       throw new AppError('File not found', 404);
     }
-    const { quality, format, maxSize, codec, resolution } = req.body;
+    // Express 5 leaves req.body undefined when no JSON body was parsed (a POST
+    // with no body, or text/plain); Express 4 gave {}. Keep 4's behaviour.
+    const { quality, format, maxSize, codec, resolution } = req.body ?? {};
     
     const filePath = path.join(__dirname, '../temp', id);
     

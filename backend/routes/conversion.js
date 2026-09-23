@@ -111,7 +111,9 @@ router.post('/:id', async (req, res, next) => {
     if (!isSafeId(id)) {
       throw new AppError('File not found', 404);
     }
-    let { format } = req.body;
+    // Express 5: req.body is undefined without a JSON body (see compression).
+    const body = req.body ?? {};
+    let { format } = body;
     // Normalise once. A non-string format used to reach .toLowerCase() and come
     // back as a 500; it is an unsupported format, which is a 400.
     format = typeof format === 'string' ? format : '';
@@ -147,7 +149,7 @@ router.post('/:id', async (req, res, next) => {
       outputPath = await convertOfficeToPDF(filePath);
       // An optional named level runs the PDF through Ghostscript, as the
       // compression route does for a dropped PDF. Keep whichever is smaller.
-      const { quality } = req.body;
+      const { quality } = body;
       if (PDF_LEVELS.includes(quality)) {
         const compressedPath = await compressPDF(outputPath, { quality });
         if (fs.statSync(compressedPath).size < fs.statSync(outputPath).size) {
