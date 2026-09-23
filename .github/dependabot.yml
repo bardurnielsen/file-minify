@@ -13,9 +13,24 @@ updates:
       frontend-minor-and-patch:
         update-types: [minor, patch]
     ignore:
-      # Tailwind 4 replaces tailwind.config.js with CSS-first config: a
-      # migration to do deliberately, not a weekly bump.
+      # Majors that are migrations, not bumps - each tracked by an issue, and
+      # this rule is removed in the PR that does it.
+      # Tailwind 4 replaces tailwind.config.js with CSS-first config.
       - dependency-name: tailwindcss
+        update-types: ["version-update:semver-major"]
+      # React 19 (#24): the grouped bump failed the build and the browser suite.
+      - dependency-name: react
+        update-types: ["version-update:semver-major"]
+      - dependency-name: react-dom
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react-dom"
+        update-types: ["version-update:semver-major"]
+      # ESLint 10 (#25): @eslint/js, eslint and the plugins have to move together.
+      - dependency-name: eslint
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@eslint/js"
         update-types: ["version-update:semver-major"]
   # The browser tests' runner; run.sh picks the Playwright image matching
   # this version, so a bump here updates the browsers too.
