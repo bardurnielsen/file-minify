@@ -1,4 +1,4 @@
-import { DownloadRoute, Route } from '../types';
+import { DownloadRoute, ResultDetails, Route } from '../types';
 
 const API = '/api';
 
@@ -56,6 +56,7 @@ export interface ProcessResponse {
   compressedSize?: number;
   convertedSize?: number;
   newFormat?: string;
+  details?: ResultDetails | null;
 }
 
 export const processFile = async (

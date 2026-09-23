@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { FileItem, FileType, ProcessingOption } from '../../types';
 import { formatBytes, percentChange, cn } from '../../lib/format';
-import { describePlan, isOffice, isStale, targetFormatFor, tierLabel } from '../../processing';
+import { describePlan, describeResult, isOffice, isStale, targetFormatFor, tierLabel } from '../../processing';
 import { extensionOf } from '../../formats';
 import { Button } from '../ui/button';
 import AdjustPanel from './AdjustPanel';
@@ -245,6 +245,11 @@ const FileRow: React.FC<FileRowProps> = ({ file, onDownload, onRemove, onRerun, 
             <div className="mt-1.5">
               <SavingsBar before={file.size} after={result.outputSize} />
             </div>
+            {describeResult(file.type, result) && (
+              <div className="mt-1 truncate text-xs text-zinc-400 dark:text-zinc-500">
+                {describeResult(file.type, result)}
+              </div>
+            )}
           </div>
         );
       }
@@ -340,8 +345,12 @@ const FileRow: React.FC<FileRowProps> = ({ file, onDownload, onRemove, onRerun, 
           <motion.div
             key="adjust"
             initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1, display: 'block' }}
+            // display: none once collapsed. When several rows update at once,
+            // AnimatePresence can miss the exit's completion and leave the
+            // panel mounted at zero height - still reachable by Tab and read
+            // by screen readers, with a live Compress button in it.
+            exit={{ height: 0, opacity: 0, transitionEnd: { display: 'none' } }}
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
           >
             <AdjustPanel

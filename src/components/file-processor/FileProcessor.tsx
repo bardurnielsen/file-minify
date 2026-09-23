@@ -143,6 +143,7 @@ const FileProcessor: React.FC = () => {
               // have made it smaller.
               unchanged: route === 'compression' && (data.id === serverId || outputSize >= file.size),
               options,
+              details: data.details ?? null,
             },
           });
         });
@@ -249,7 +250,7 @@ const FileProcessor: React.FC = () => {
       // Route and options come from the result, i.e. what actually produced the
       // file - not the row's current (possibly edited) settings.
       const blob = await downloadBlob(file.result.route, file.result.processedId);
-      saveBlob(blob, outputNameFor(file.name, file.type, file.result.options));
+      saveBlob(blob, outputNameFor(file.name, file.type, file.result));
     } catch (error) {
       addToast({
         type: 'error',

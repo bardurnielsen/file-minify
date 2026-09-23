@@ -27,7 +27,9 @@ const convertImage = async (filePath, format) => {
   try {
     // Use Sharp for image conversion
     const sharp = require('sharp');
-    let sharpInstance = sharp(filePath);
+    // autoOrient: turn phone photos upright before the EXIF Orientation tag is
+    // dropped with the rest of the metadata (see compressImage).
+    let sharpInstance = sharp(filePath).autoOrient();
     
     // Use the correct Sharp format methods
     switch (format) {

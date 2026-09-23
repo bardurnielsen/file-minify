@@ -36,6 +36,24 @@ export interface ProcessingOption {
   resolution?: VideoResolution;
 }
 
+/**
+ * What the backend did, as it reports it (POST /compression). Drives the file
+ * name and the result row. Absent for conversions and when the original was
+ * kept.
+ */
+export interface ResultDetails {
+  /** Video and PDF: the level, or 'target' for a video size target. */
+  preset?: 'low' | 'medium' | 'high' | 'target';
+  targetMb?: number;
+  /** Images: the quality actually used. */
+  quality?: number;
+  /** Video: output codec and short side, and the source's. */
+  codec?: 'h264' | 'h265';
+  shortSide?: number | null;
+  sourceCodec?: string | null;
+  sourceShortSide?: number | null;
+}
+
 export interface FileResult {
   processedId: string;
   route: Route;
@@ -46,6 +64,7 @@ export interface FileResult {
   unchanged: boolean;
   /** The options that produced this result (used for downloads and staleness). */
   options: ProcessingOption;
+  details?: ResultDetails | null;
 }
 
 export interface FileItem {

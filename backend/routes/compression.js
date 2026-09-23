@@ -42,7 +42,10 @@ const compressImage = async (filePath, options) => {
   );
   
   try {
-    let sharpInstance = sharp(filePath);
+    // autoOrient: phones store portrait photos sideways plus an EXIF
+    // Orientation tag. Sharp drops metadata on output, so without turning the
+    // pixels first the tag was lost and the photo came out sideways.
+    let sharpInstance = sharp(filePath).autoOrient();
     
     // Set format
     if (format === 'jpeg' || format === 'jpg') {
@@ -51,6 +54,14 @@ const compressImage = async (filePath, options) => {
       sharpInstance = sharpInstance.png({ quality });
     } else if (format === 'webp') {
       sharpInstance = sharpInstance.webp({ quality });
+    }
+
+    // Say what was done, in the EXIF description (GIF has no EXIF). Nothing
+    // else from the original's metadata is carried over, location included.
+    if (['jpeg', 'jpg', 'png', 'webp'].includes(format)) {
+      sharpInstance = sharpInstance.withExif({
+        IFD0: { ImageDescription: `FileMinify - quality ${quality}` }, // EXIF text is ASCII
+      });
     }
     
     await sharpInstance.toFile(outputPath);
@@ -114,6 +125,13 @@ const ceilingFor = (source, share, shortSide) => {
 const capShortSide = (max) =>
   `scale='if(gt(iw,ih),-2,min(${max},iw))':'if(gt(iw,ih),min(${max},ih),-2)'`;
 
+// How a result is described: in its file name (built by the frontend from the
+// `details` returned below), in the file itself, and on the result row.
+const LEVEL_LABEL = { low: 'Smaller', medium: 'Balanced', high: 'Best quality' };
+const CODEC_LABEL = { h264: 'H.264', h265: 'H.265', hevc: 'HEVC', vp9: 'VP9', av1: 'AV1' };
+// By the short side, so a portrait clip is "720p" just as a landscape one is.
+const resolutionLabel = (shortSide) => (shortSide >= 2160 ? '4K' : `${shortSide}p`);
+
 // Compress video file
 const compressVideo = async (filePath, options) => {
   const {
@@ -152,6 +170,38 @@ const compressVideo = async (filePath, options) => {
 
     const shortSide = chosen === undefined ? setting.shortSide : chosen;
     const ceiling = ceilingFor(source, setting.ceiling, shortSide);
+
+    // What the output will be, known before encoding: the scale filter caps the
+    // short side and never enlarges, so it is the smaller of cap and source.
+    const srcShort = Math.min(source.width, source.height) || null;
+    const outShort = (cap) => (cap && srcShort ? Math.min(cap, srcShort) : srcShort);
+    const describe = (cap) => {
+      const details = {
+        preset: maxSize ? 'target' : level,
+        ...(maxSize ? { targetMb: maxSize } : {}),
+        codec,
+        shortSide: outShort(cap),
+        sourceCodec: source.codec,
+        sourceShortSide: srcShort,
+      };
+      const parts = [
+        'FileMinify',
+        maxSize ? `Target ${maxSize} MB` : LEVEL_LABEL[level],
+        CODEC_LABEL[codec],
+        details.shortSide && resolutionLabel(details.shortSide),
+        srcShort && `from ${resolutionLabel(srcShort)} ${CODEC_LABEL[source.codec] ?? source.codec ?? ''}`.trim(),
+      ].filter(Boolean);
+      // A comment tag: VLC, MediaInfo and file properties show it, and it
+      // travels with the file. Set on the output only (never the null pass).
+      // -map_metadata -1 first: nothing is copied from the source, which is
+      // where a phone keeps GPS coordinates - these files get emailed to
+      // strangers. Images already come out with no source metadata.
+      return {
+        details,
+        metadata: ['-map_metadata', '-1', '-metadata', `comment=${parts.join(' · ')}`],
+      };
+    };
+    let described = describe(shortSide);
     
     // -y is required: without it FFmpeg prompts before overwriting an existing
     // output (including /dev/null below) and blocks forever, since it has no
@@ -161,7 +211,7 @@ const compressVideo = async (filePath, options) => {
       ...x265([]), '-crf', setting.crf, '-preset', setting.preset,
       ...(ceiling ? ['-maxrate', `${ceiling}k`, '-bufsize', `${ceiling * 2}k`] : []),
       ...scale(shortSide),
-      '-c:a', 'aac', '-b:a', setting.audio, outputPath,
+      '-c:a', 'aac', '-b:a', setting.audio, ...described.metadata, outputPath,
     ]];
     let passLog = null;
     
@@ -174,6 +224,7 @@ const compressVideo = async (filePath, options) => {
       const audioKbps = 128;
       const bitrate = Math.max(100, Math.floor((targetSize * 8) / source.duration) - audioKbps);
       const fitted = chosen === undefined ? shortSideForBitrate(bitrate) : chosen;
+      described = describe(fitted);
       
       // Each job needs its own pass log. FFmpeg defaults to ffmpeg2pass-0.log in
       // the working directory, so concurrent jobs would corrupt each other.
@@ -192,7 +243,7 @@ const compressVideo = async (filePath, options) => {
         ['-y', '-i', filePath, ...video, '-b:v', `${bitrate}k`, ...scale(fitted),
          ...pass(1), '-an', '-f', 'mp4', '/dev/null'],
         ['-y', '-i', filePath, ...video, '-b:v', `${bitrate}k`, ...scale(fitted),
-         ...pass(2), '-c:a', 'aac', '-b:a', `${audioKbps}k`, outputPath],
+         ...pass(2), '-c:a', 'aac', '-b:a', `${audioKbps}k`, ...described.metadata, outputPath],
       ];
     }
     
@@ -208,7 +259,7 @@ const compressVideo = async (filePath, options) => {
         }
       }
     }
-    return outputPath;
+    return { outputPath, details: described.details };
   } catch (error) {
     logger.error('Video compression failed', error);
     throw new AppError('Video compression failed', 500);
@@ -221,7 +272,7 @@ const compressVideo = async (filePath, options) => {
 const probeVideo = async (filePath) => {
   const { stdout } = await run('ffprobe', [
     '-v', 'error', '-print_format', 'json',
-    '-show_entries', 'format=duration,bit_rate:stream=codec_type,bit_rate,width,height', filePath,
+    '-show_entries', 'format=duration,bit_rate:stream=codec_type,codec_name,bit_rate,width,height', filePath,
   ]);
   const info = JSON.parse(stdout);
   const kbps = (v) => (Number(v) > 0 ? Number(v) / 1000 : 0);
@@ -237,6 +288,7 @@ const probeVideo = async (filePath) => {
     videoKbps,
     width: videoStream?.width || 0,
     height: videoStream?.height || 0,
+    codec: videoStream?.codec_name || null,
   };
 };
 
@@ -259,29 +311,32 @@ router.post('/:id', async (req, res, next) => {
     // Determine file type and apply appropriate compression
     const fileExt = path.extname(filePath).toLowerCase();
     let outputPath;
+    let details = null;
     
     if (IMAGE_FORMATS.map(e => `.${e}`).includes(fileExt)) {
       // Image compression
       // A missing format means "keep it", as 'original' does. This used to
       // default to 'jpeg', so a PNG sent without one came back as a JPEG.
-      outputPath = await compressImage(filePath, {
-        quality: parseInt(quality) || 80,
-        format
-      });
+      const q = parseInt(quality) || 80;
+      outputPath = await compressImage(filePath, { quality: q, format });
+      details = { quality: q };
     } else if (fileExt === '.pdf') {
       // PDF compression
-      outputPath = await compressPDF(filePath, { 
-        quality: quality || 'medium'
+      const level = ['low', 'medium', 'high'].includes(quality) ? quality : 'medium';
+      outputPath = await compressPDF(filePath, {
+        quality: level,
+        label: `FileMinify · ${LEVEL_LABEL[level]}`,
       });
+      details = { preset: level };
     } else if (VIDEO_FORMATS.map(e => `.${e}`).includes(fileExt)) {
       // Video compression
-      outputPath = await compressVideo(filePath, {
+      ({ outputPath, details } = await compressVideo(filePath, {
         quality: quality || 'medium',
         format,
         maxSize: maxSize ? parseInt(maxSize) : null,
         codec: codec || 'h264',
         resolution
-      });
+      }));
     } else {
       throw new AppError('Unsupported file type for compression', 400);
     }
@@ -302,6 +357,7 @@ router.post('/:id', async (req, res, next) => {
       fs.unlinkSync(outputPath);
       outputPath = filePath;
       compressedStats = originalStats;
+      details = null; // the untouched original: nothing was done to describe
     }
     
     res.status(200).json({
@@ -311,7 +367,10 @@ router.post('/:id', async (req, res, next) => {
         originalSize: originalStats.size,
         compressedSize: compressedStats.size,
         compressionRatio: (compressedStats.size / originalStats.size).toFixed(2),
-        savedSpace: originalStats.size - compressedStats.size
+        savedSpace: originalStats.size - compressedStats.size,
+        // What was done, for the file name and the result row. Null when the
+        // original was kept.
+        details
       }
     });
   } catch (error) {
