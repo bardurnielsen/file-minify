@@ -39,8 +39,8 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       # Build only: this repo publishes no images, so it needs no registry
-      # credentials. The image build runs `tsc && vite build`, so this is also
-      # the type check.
+      # credentials. The image build runs `tsc -b && eslint . && vite build`, so
+      # this is also the type check and lint.
       - name: Build frontend
         uses: docker/build-push-action@v6
         with:
