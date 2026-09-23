@@ -13,10 +13,7 @@
 </p>
 
 <p align="center">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/results-dark.png">
-  <img alt="One drop of four files: a 43 MB video down to 1.3 MB, a 9.7 MB photo to 1.4 MB, a scanned PDF halved and a Word document turned into a smaller PDF, each labelled with what was done" src="docs/screenshots/results-light.png" width="760">
-</picture>
+<img alt="One drop of four files: a 43 MB video down to 1.3 MB, a 9.7 MB photo to 1.4 MB, a scanned PDF halved and a Word document turned into a smaller PDF, each labelled with what was done" src="docs/screenshots/results.png" width="760">
 </p>
 
 Drop files in and images, PDFs and documents are processed straight away; videos
@@ -42,10 +39,7 @@ encode, not playable everywhere), or aim at a target size instead — handy for
 getting a clip under an email attachment limit.
 
 <p align="center">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/video-settings-dark.png">
-  <img alt="A dropped video waiting with its settings open: output format, quality, resolution, codec and target size, and a Compress button" src="docs/screenshots/video-settings-light.png" width="620">
-</picture>
+<img alt="A dropped video waiting with its settings open: output format, quality, resolution, codec and target size, and a Compress button" src="docs/screenshots/video-settings.png" width="620">
 </p>
 
 Office files become PDFs at the chosen tier, and every PDF Ghostscript writes is
@@ -71,10 +65,7 @@ nothing is merged and the response names the file, rather than quietly handing b
 a document with a piece missing.
 
 <p align="center">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/merge-dark.png">
-  <img alt="The merge dialog: three files in page order with drag handles and arrows, a video listed as unable to become a PDF, and a file name field" src="docs/screenshots/merge-light.png" width="520">
-</picture>
+<img alt="The merge dialog: three files in page order with drag handles and arrows, a video listed as unable to become a PDF, and a file name field" src="docs/screenshots/merge.png" width="520">
 </p>
 
 **Labelled results** — a download's name says what was done to it, e.g.
@@ -109,15 +100,9 @@ docker compose up -d --build
 Then open **http://localhost:3051**. It works the same from a phone on your network.
 
 <p align="center">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/hero-dark.png">
-  <img alt="The landing page: a large drop area with a quality control underneath" src="docs/screenshots/hero-light.png" width="520">
-</picture>
+<img alt="The landing page: a large drop area with a quality control underneath" src="docs/screenshots/hero.png" width="520">
 &nbsp;
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/phone-dark.png">
-  <img alt="The app on a phone: the savings summary and results for a video and a photo" src="docs/screenshots/phone-light.png" width="181">
-</picture>
+<img alt="The app on a phone: the savings summary and results for a video and a photo" src="docs/screenshots/phone.png" width="181">
 </p>
 
 The first build takes a while — the backend image installs LibreOffice, FFmpeg,
@@ -165,8 +150,8 @@ by the backend's ffmpeg. `./e2e/run.sh -- --grep merge` runs a subset, and a
 failure leaves a trace in `e2e/test-results/` to open at trace.playwright.dev.
 
 The screenshots in this README are generated, not taken by hand:
-`./e2e/screenshots/update.sh` rebuilds all of them (light and dark) from the running
-stack with demo files, so they can be refreshed whenever the UI changes.
+`./e2e/screenshots/update.sh` rebuilds all of them from the running stack with demo
+files, so they can be refreshed whenever the UI changes.
 
 Docker is the only supported way to run it: the backend needs FFmpeg, Ghostscript,
 ImageMagick and LibreOffice, and the images pin all of them.

@@ -360,6 +360,8 @@ const FileProcessor: React.FC = () => {
     return {
       done: done.length,
       busy,
+      waiting: files.filter((f) => f.status === 'ready').length,
+      failed: files.filter((f) => f.status === 'error').length,
       stale: files.filter(isStale).length,
       mergeable: files.filter(isMergeable).length,
       saved: before - after,
@@ -425,7 +427,21 @@ const FileProcessor: React.FC = () => {
                 <div className="text-xs text-zinc-400 dark:text-zinc-500">
                   {summary.busy === 0 && summary.saved > 0 && summary.done > 0
                     ? `${summary.pct}% smaller across ${plural(summary.done, 'file')}`
-                    : `${plural(files.length, 'file')}${summary.done > 0 ? ` · ${summary.done} ready` : ''}`}
+                    : summary.busy === 0 && summary.done === 0
+                      ? // The line above already counts the files: say what they're doing.
+                        [
+                          summary.waiting > 0 && `${summary.waiting} waiting for settings`,
+                          summary.failed > 0 && `${summary.failed} failed`,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')
+                      : [
+                          plural(files.length, 'file'),
+                          summary.done > 0 && `${summary.done} ready`,
+                          summary.waiting > 0 && `${summary.waiting} waiting for settings`,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
                 </div>
               </div>
 
