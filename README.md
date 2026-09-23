@@ -90,8 +90,8 @@ docker compose down -v             # stop and delete uploaded files
 ### Ports
 
 Defined in `docker-compose.yml`; the app is on **3051** and the API on **4001**.
-These are deliberately offset so this can run alongside the original FileMinify on
-3050/4000. Change the left-hand side of each mapping to move them.
+(The offset from 3050/4000 dates from running beside the first version of
+FileMinify, now retired.) Change the left-hand side of each mapping to move them.
 
 Only 3051 is published to the network. The API is bound to `127.0.0.1:4001` for
 the smoke suite and for debugging from the host — nginx reaches the backend over
