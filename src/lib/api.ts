@@ -46,7 +46,15 @@ export const uploadFile = (file: File, onProgress: (fraction: number) => void) =
     xhr.onerror = () => reject(new Error('Network error while uploading'));
     xhr.onabort = () => reject(new Error('Upload cancelled'));
     const form = new FormData();
-    form.append('files', file);
+    // FormData sends a file's own (internal) type, not a `type` property laid
+    // over it - which is how the dropzone fills in a type the browser left
+    // blank (see getFilesFromEvent in FileProcessor). Re-wrap so the upload
+    // carries it; the backend's MIME allowlist refuses octet-stream. File
+    // parts reference the original data, so this copies nothing.
+    form.append(
+      'files',
+      new File([file], file.name, { type: file.type, lastModified: file.lastModified })
+    );
     xhr.send(form);
   });
 
