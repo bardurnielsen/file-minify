@@ -7,13 +7,11 @@ interface FormatSelectorProps {
   value: string;
   onChange: (value: string) => void;
   options: FormatOption[];
-  id?: string;
 }
 
-const FormatSelector: React.FC<FormatSelectorProps> = ({ value, onChange, options, id }) => (
+const FormatSelector: React.FC<FormatSelectorProps> = ({ value, onChange, options }) => (
   <SelectPrimitive.Root value={value} onValueChange={onChange}>
     <SelectPrimitive.Trigger
-      id={id}
       className="inline-flex h-9 min-w-[9rem] items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-800 transition-colors hover:border-zinc-300 focus-ring dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-zinc-600"
     >
       <SelectPrimitive.Value />

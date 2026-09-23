@@ -110,11 +110,6 @@ router.post('/:id', async (req, res, next) => {
       throw new AppError('File not found', 404);
     }
     let { format } = req.body;
-    
-    // If body contains options object, extract format from it
-    if (req.body.options && req.body.options.format) {
-      format = req.body.options.format;
-    }
     // Normalise once. A non-string format used to reach .toLowerCase() and come
     // back as a 500; it is an unsupported format, which is a 400.
     format = typeof format === 'string' ? format : '';

@@ -26,8 +26,10 @@ docker compose logs --tail=30 backend
 App on **http://localhost:3051**, API on **4001**. The offset from 3050/4000 is
 deliberate so this can run beside the original.
 
-The frontend image build runs `tsc && vite build`, so a clean build is the type
-check. No test framework is configured.
+The frontend image build runs `tsc -b && eslint . && vite build`, so a clean build
+is the type check and lint. It must be `tsc -b`: the root tsconfig.json is a
+solution file (`"files": []` plus references), and plain `tsc` checks zero files
+- it did, silently, until the build was fixed. No test framework is configured.
 
 ## Architecture
 
@@ -128,8 +130,9 @@ check. No test framework is configured.
   blank page, which used to come back as a 95% saving. `needsPassword` spots
   its stderr message and the route answers 422 instead. PDFs that only
   restrict printing or editing still work. Merge reports the same case itself.
-- **`maxSize` means different things per type**: a target file size for video, but
-  a megapixel cap for images, where it silently downscales.
+- **`maxSize` is video only**: a target file size in MB. Images once treated it as
+  a silent megapixel cap; that is gone.
+- **A missing `format` means `original`** on compression, same as sending it.
 - **Merging is atomic.** One unconvertible file fails the whole merge, with
   `failedId` naming it. The UI offers leaving it out.
 - **Merge uses the processed output** (`processedId ?? serverId`), so a converted
@@ -154,14 +157,14 @@ No unit tests. There is an API smoke suite at `backend/test/smoke.sh`, with
 fixtures beside it. It needs the stack running and defaults to :4001; pass a
 base URL to point it elsewhere. It exits non-zero on failure.
 
-It covers upload, compression, conversion, error handling, and a security block
+It covers upload, compression, conversion, merge, error handling, and a security block
 pinning the bugs fixed in `1f27b28` — format injection, `id` path traversal on
 the download and delete routes, MIME rejection, the upload size cap, and the
 same-origin check in both directions. Those last cases are regression tests: if
 one starts failing, a hole has reopened.
 
 CI (`.github/workflows/docker-build.yml`) runs one job per image: `frontend`
-builds (and so type-checks), `backend` builds, starts that exact image and runs
+builds (and so type-checks and lints), `backend` builds, starts that exact image and runs
 the smoke suite. Each caches under its own `gha` scope - with a shared scope the
 two overwrote each other and the apt layer was rebuilt every run. Build contexts
 are trimmed per image by `<Dockerfile>.dockerignore`. Docs-only changes skip CI.

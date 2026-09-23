@@ -1,5 +1,4 @@
 const winston = require('winston');
-const path = require('path');
 
 // Define log format
 const logFormat = winston.format.combine(
@@ -24,26 +23,10 @@ const logger = winston.createLogger({
         )
       )
     }),
-    // Write to log files
-    new winston.transports.File({ 
-      filename: path.join(__dirname, '../logs/error.log'), 
-      level: 'error',
-      maxsize: 5242880, // 5MB
-      maxFiles: 5
-    }),
-    new winston.transports.File({ 
-      filename: path.join(__dirname, '../logs/combined.log'),
-      maxsize: 5242880, // 5MB
-      maxFiles: 5
-    }),
+    // Console only: `docker compose logs` keeps it. The log files that used to
+    // be written here lived in the container's writable layer, were lost on
+    // every rebuild, and nothing read them.
   ],
 });
-
-// Ensure log directory exists
-const fs = require('fs');
-const logDir = path.join(__dirname, '../logs');
-if (!fs.existsSync(logDir)) {
-  fs.mkdirSync(logDir);
-}
 
 module.exports = logger;

@@ -37,9 +37,10 @@ const ALLOWED_TYPES = {
   'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx']
 };
 
-// Stored names are interpolated into shell commands further down the pipeline
-// (ffmpeg, gs, convert, libreoffice), so nothing from originalname may reach
-// disk verbatim: the extension is picked from the table above, never copied.
+// Stored names become arguments to ffmpeg, gs, convert and libreoffice further
+// down the pipeline. Those run without a shell, but each tool still parses its
+// arguments, so nothing from originalname may reach disk verbatim: the
+// extension is picked from the table above, never copied.
 const safeExtFor = (file) => {
   const allowed = Object.prototype.hasOwnProperty.call(ALLOWED_TYPES, file.mimetype)
     ? ALLOWED_TYPES[file.mimetype]
@@ -112,31 +113,20 @@ router.post('/', (req, res) => {
       });
     }
 
-    try {
-      // Set JSON content type header only for successful response
-      res.setHeader('Content-Type', 'application/json');
-      
-      // Return file info
-      const uploadedFiles = req.files.map(file => ({
-        id: path.basename(file.path),
-        originalName: file.originalname,
-        filename: file.filename,
-        size: file.size,
-        mimetype: file.mimetype,
-        path: file.path,
-      }));
+    // No `path` (it exposed the server's filesystem layout) and no `filename`
+    // (always equal to `id`).
+    const uploadedFiles = req.files.map(file => ({
+      id: path.basename(file.path),
+      originalName: file.originalname,
+      size: file.size,
+      mimetype: file.mimetype,
+    }));
 
-      return res.status(200).json({
-        success: true,
-        count: uploadedFiles.length,
-        data: uploadedFiles
-      });
-    } catch (error) {
-      return res.status(500).json({
-        success: false,
-        error: error.message || 'Error processing uploaded files'
-      });
-    }
+    return res.status(200).json({
+      success: true,
+      count: uploadedFiles.length,
+      data: uploadedFiles
+    });
   });
 });
 

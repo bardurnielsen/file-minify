@@ -37,9 +37,9 @@ services:
     # of the rate limiter entirely.
     ports:
       - "127.0.0.1:4001:4000"
+    # NODE_ENV=production and PORT=4000 come from the image. PORT is not a real
+    # knob: the port map above, the healthcheck and nginx all say 4000.
     environment:
-      - NODE_ENV=production
-      - PORT=4000
       - MAX_FILE_SIZE=50MB
       # Same-origin only by default: nginx serves the app and proxies /api on
       # one origin, so the browser never makes a cross-origin call. Set this to

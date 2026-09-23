@@ -6,7 +6,6 @@ interface OptionSliderProps {
   onChange: (value: number) => void;
   min?: number;
   max?: number;
-  step?: number;
   /** Rendered after the number, e.g. "MB". */
   unit?: string;
   'aria-label'?: string;
@@ -17,7 +16,6 @@ const OptionSlider: React.FC<OptionSliderProps> = ({
   onChange,
   min = 0,
   max = 100,
-  step = 1,
   unit,
   ...rest
 }) => (
@@ -27,7 +25,7 @@ const OptionSlider: React.FC<OptionSliderProps> = ({
       value={[value]}
       max={max}
       min={min}
-      step={step}
+      step={1}
       onValueChange={(values) => onChange(values[0])}
       aria-label={rest['aria-label']}
     >

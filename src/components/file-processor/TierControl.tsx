@@ -11,7 +11,6 @@ interface TierControlProps {
   disabled?: boolean;
   /** Distinguishes the sliding highlight when several controls are on screen. */
   id: string;
-  className?: string;
 }
 
 const TierControl: React.FC<TierControlProps> = ({
@@ -20,15 +19,13 @@ const TierControl: React.FC<TierControlProps> = ({
   size = 'md',
   disabled,
   id,
-  className,
 }) => (
   <div
     role="radiogroup"
     aria-label="Quality"
     className={cn(
       'relative inline-flex rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800/80',
-      disabled && 'opacity-50 pointer-events-none',
-      className
+      disabled && 'opacity-50 pointer-events-none'
     )}
   >
     {TIERS.map((tier) => {

@@ -94,16 +94,14 @@ export const DropHero: React.FC<HeroProps> = ({
 
 interface AddMoreProps {
   onBrowse: () => void;
-  disabled?: boolean;
 }
 
 /** The compact strip that replaces the hero once files are present. */
-export const AddMoreStrip: React.FC<AddMoreProps> = ({ onBrowse, disabled }) => (
+export const AddMoreStrip: React.FC<AddMoreProps> = ({ onBrowse }) => (
   <button
     type="button"
     onClick={onBrowse}
-    disabled={disabled}
-    className="group flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-200 px-4 py-3 text-sm text-zinc-500 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-800 focus-ring disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-100"
+    className="group flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-200 px-4 py-3 text-sm text-zinc-500 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-800 focus-ring dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-100"
   >
     <Plus className="h-4 w-4" />
     Add more files

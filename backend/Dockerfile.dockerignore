@@ -1,6 +1,9 @@
 # Build context for backend/Dockerfile only. It copies nothing outside backend/,
 # so send nothing else - and never a host node_modules, which would land on top
-# of the one `npm ci` built for the image.
+# of the one `npm ci` built for the image. The smoke suite and its fixtures run
+# from the host, and the Dockerfile has no use inside the image either.
 *
 !backend
 backend/node_modules
+backend/test
+backend/Dockerfile*

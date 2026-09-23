@@ -95,7 +95,7 @@ const repackPDF = async (filePath) => {
 // else is medium), then repack it. -dBATCH/-dNOPAUSE keep it non-interactive,
 // and it overwrites an existing output silently.
 const compressPDF = async (filePath, options) => {
-  const { quality = 'screen' } = options; // 'screen', 'ebook', 'printer', 'prepress'
+  const { quality = 'medium' } = options; // 'low' | 'medium' | 'high'
   const outputPath = path.join(
     path.dirname(filePath),
     `compressed-${path.basename(filePath)}`

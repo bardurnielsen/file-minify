@@ -110,7 +110,7 @@ export const describePlan = (file: FileItem) => {
   return `Compress · ${tierLabel(options.tier)}${videoExtras}`;
 };
 
-export const resolutionLabel = (r: VideoResolution) => (r === 'source' ? 'original size' : `${r}p`);
+const resolutionLabel = (r: VideoResolution) => (r === 'source' ? 'original size' : `${r}p`);
 
 // The backend only muxes HEVC into MP4 and MOV.
 const HEVC_EXTS = ['mp4', 'mov'];
@@ -172,5 +172,3 @@ export const mergeSourceId = (file: FileItem) => file.result?.processedId ?? fil
 /** Mergeable and already on the server. */
 export const isMergeReady = (file: FileItem) =>
   isMergeable(file) && !!mergeSourceId(file) && file.status !== 'uploading';
-
-export const MAX_MERGE_SOURCES = 20;

@@ -1,8 +1,9 @@
 # FileMinify
 
 A self-hosted web app for shrinking and converting files, and for merging anything
-printable into a single PDF. Drop files in and they are processed immediately —
-there is nothing to configure first.
+printable into a single PDF. Drop files in and images, PDFs and documents are
+processed straight away; videos wait for one click, so you can aim for a file size
+or pick a resolution first.
 
 Frontend is React + TypeScript, backend is Node/Express wrapping FFmpeg,
 Ghostscript, ImageMagick, Sharp and LibreOffice. Everything runs in Docker.
@@ -13,6 +14,16 @@ Ghostscript, ImageMagick, Sharp and LibreOffice. Everything runs in Docker.
 AVI). One control, three tiers: *Smaller*, *Balanced* (default), *Best quality*.
 The tier maps onto whatever each encoder actually understands, so it does something
 real in every case rather than sending a number that gets ignored.
+
+For video each tier also sets a resolution (*Smaller* up to 720p, *Balanced* up to
+1080p, *Best quality* the original, never enlarged) and caps the bitrate at a share
+of the source's, so every tier is a real step down even for an already-lean clip.
+Per file you can pick the resolution yourself, switch to H.265 (MP4/MOV; about a
+quarter smaller, slower to encode, not playable everywhere), or aim at a target
+size instead — handy for getting a clip under an email attachment limit.
+
+Office files become PDFs at the chosen tier, and every PDF Ghostscript writes is
+then repacked losslessly into compressed object streams.
 
 **Conversion** — only between formats that genuinely work, derived from one table
 (`src/formats.ts`) that mirrors the backend:
@@ -35,9 +46,11 @@ a document with a piece missing.
 
 **Honest results** — when re-encoding would make a file *larger* (already-optimised
 PDFs and video often do), the original is kept and reported as-is instead of being
-presented as a saving.
+presented as a saving. A PDF that needs a password to open is refused with a clear
+error rather than coming back as a blank page.
 
-Files are processed in place and deleted an hour after upload. There is no account,
+Files are processed in place and deleted by an hourly sweep once they are an hour
+old. There is no account,
 no database, and nothing leaves the machine you run it on.
 
 ## Requirements
@@ -85,14 +98,15 @@ docker compose up -d --build frontend   # frontend only
 docker compose up -d --build backend    # backend only
 ```
 
-The frontend image build runs `tsc && vite build`, so a successful build is also a
-type check. There is no test framework configured.
+The frontend image build runs `tsc -b && eslint . && vite build`, so a successful
+build is also the type check and lint. The backend has an API smoke suite:
 
-Running outside Docker is possible (`npm install && npm run dev` at the root for
-Vite on :5173, and in `backend/` for the API on :4000) but the backend then needs
-FFmpeg, Ghostscript, ImageMagick and LibreOffice installed on the host. Docker is
-the supported path. The Vite dev server proxies `/api` to :4000 the way nginx does
-in the container, so the browser stays on one origin either way.
+```bash
+./backend/test/smoke.sh            # needs the stack running; defaults to :4001
+```
+
+Docker is the only supported way to run it: the backend needs FFmpeg, Ghostscript,
+ImageMagick and LibreOffice, and the images pin all of them.
 
 ## API
 
@@ -102,24 +116,27 @@ stripping the prefix.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `POST` | `/upload` | multipart, field `files`, up to 10 files of 50 MB. Returns an `id` per file |
-| `POST` | `/compression/:id` | `{quality, format, maxSize}` → sizes and ratio |
+| `POST` | `/compression/:id` | `{quality, format}`; for video also `maxSize` (target MB), `codec` (`h264`\|`h265`) and `resolution` (`source`\|`1080`\|`720`\|`480`) → sizes and ratio |
 | `GET` | `/compression/download/:id` | the compressed bytes |
-| `POST` | `/conversion/:id` | `{format}` → sizes and formats |
+| `POST` | `/conversion/:id` | `{format}`, plus `quality` for Office → PDF → sizes and formats |
 | `GET` | `/conversion/download/:id` | the converted bytes |
 | `POST` | `/merge` | `{ids: [...]}`, 2–20, merged in the order given → `{id, size, pageCount, fileCount}` |
 | `GET` | `/merge/download/:id` | the merged PDF |
 | `DELETE` | `/upload/:id` | discard an upload |
 | `GET` | `/health` | `{"status":"ok"}` |
 
-Errors are `{success: false, error: "..."}`. A merge that fails on one file also
-returns `failedId` naming it.
+`format` is a target format, or `original` (or omitted) to keep the source's.
+`quality` is 1–100 for images and `low`\|`medium`\|`high` for everything else.
+
+Errors are `{success: false, error: "..."}`. A password-protected PDF is a `422`. A
+merge that fails on one file also returns `failedId` naming it.
 
 ## Configuration
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `PORT` | `4000` | backend port inside the container |
-| `NODE_ENV` | `production` | set by Compose |
+| `NODE_ENV` | `production` | set in the backend image |
 | `MAX_FILE_SIZE` | `50MB` | per-file upload limit; bytes or a suffixed size |
 | `CORS_ORIGIN` | *(empty)* | extra origins allowed in, comma-separated. Empty means same-origin only, which is all the app itself needs |
 
