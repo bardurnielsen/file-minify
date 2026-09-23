@@ -4,8 +4,9 @@ const path = require('path');
 // `compressed-<uuid>.pdf`). Express decodes %2F and %2E in route params, so a
 // raw id can carry `/` and `..` even though the route pattern is `/:id` -
 // without this check `path.join` happily resolves outside temp/. The character
-// class also keeps shell metacharacters out of the paths that get interpolated
-// into the ffmpeg, gs, convert and libreoffice command lines.
+// class also keeps the paths handed to ffmpeg, gs, convert and libreoffice
+// plain: those run without a shell (utils/run.js), but an argument is still
+// parsed by the tool itself.
 const isSafeId = (id) =>
   typeof id === 'string' &&
   id.length > 0 &&

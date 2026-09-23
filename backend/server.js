@@ -1,5 +1,4 @@
 const express = require('express');
-const dotenv = require('dotenv');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
@@ -8,10 +7,8 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
 
-// Load environment variables. `quiet` because dotenv 17+ otherwise prints an
-// "injected env (0) from .env" banner on every boot, and there is no .env
-// here -- Compose passes the environment directly.
-dotenv.config({ quiet: true });
+// Configuration comes from the environment: the image sets the defaults and
+// Compose passes the rest. There is no .env file.
 
 // Import routes
 const uploadRoutes = require('./routes/upload');

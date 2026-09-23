@@ -42,6 +42,11 @@ done
 echo; echo "=== COMPRESSION ==="
 check "compress png (q70)"  "$(curl -s -X POST "$API/compression/$ID_fx_png" -H 'Content-Type: application/json' -d '{"quality":70,"format":"png"}')" compression
 check "compress jpg (q60)"  "$(curl -s -X POST "$API/compression/$ID_fx_jpg" -H 'Content-Type: application/json' -d '{"quality":60,"format":"jpeg"}')" compression
+r=$(curl -s -X POST "$API/compression/$ID_fx_png" -H 'Content-Type: application/json' -d '{"quality":60}')
+case "$r" in
+  *'"id":"compressed-'*'.png"'*) echo "PASS  png with no format stays png"; pass=$((pass+1)) ;;
+  *) echo "FAIL  png with no format -> $(printf '%s' "$r" | head -c 160)"; fail=$((fail+1)) ;;
+esac
 check "compress pdf (med)"  "$(curl -s -X POST "$API/compression/$ID_fx_pdf" -H 'Content-Type: application/json' -d '{"quality":"medium"}')" compression
 check "compress mp4 (med)"  "$(curl -s -X POST "$API/compression/$ID_fx_mp4" -H 'Content-Type: application/json' -d '{"quality":"medium","format":"mp4"}')" compression
 check "compress mp4 (low)"  "$(curl -s -X POST "$API/compression/$ID_fx_mp4" -H 'Content-Type: application/json' -d '{"quality":"low","format":"original"}')" compression

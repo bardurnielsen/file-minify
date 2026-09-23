@@ -11,10 +11,11 @@ const { compressPDF } = require('../utils/converters');
 
 const router = express.Router();
 
-// The UI sends 'original' to mean "keep the source format". Resolve it to the
-// source extension so it never lands in a filename or an encoder as a literal.
-// Resolved formats become part of an output filename that is interpolated into
-// ffmpeg's command line, so only known-good ones are allowed through. The lists
+// The UI sends 'original' to mean "keep the source format", and a missing
+// format means the same. Resolve it to the source extension so it never lands in
+// a filename or an encoder as a literal. Resolved formats become part of an
+// output filename passed to the encoders, so only known-good ones are allowed
+// through (commands run without a shell, but a path is still a path). The lists
 // are per encoder: a format the other one handles is still a 400 here, not a
 // 500 from inside Sharp or ffmpeg. The rejected value is never echoed back -
 // it is client-controlled and would otherwise reach the log verbatim.
@@ -33,7 +34,7 @@ const resolveFormat = (filePath, format, allowed) => {
 
 // Compress image file
 const compressImage = async (filePath, options) => {
-  const { quality = 80, format: rawFormat = 'jpeg', maxSize } = options;
+  const { quality, format: rawFormat } = options;
   const format = resolveFormat(filePath, rawFormat, IMAGE_FORMATS);
   const outputPath = path.join(
     path.dirname(filePath),
@@ -50,20 +51,6 @@ const compressImage = async (filePath, options) => {
       sharpInstance = sharpInstance.png({ quality });
     } else if (format === 'webp') {
       sharpInstance = sharpInstance.webp({ quality });
-    }
-    
-    // Resize if needed to meet max size constraint
-    if (maxSize) {
-      const metadata = await sharpInstance.metadata();
-      const imageArea = metadata.width * metadata.height;
-      const maxArea = maxSize * 1000000; // Convert MB to pixels (approximate)
-      
-      if (imageArea > maxArea) {
-        const scaleFactor = Math.sqrt(maxArea / imageArea);
-        const newWidth = Math.floor(metadata.width * scaleFactor);
-        const newHeight = Math.floor(metadata.height * scaleFactor);
-        sharpInstance = sharpInstance.resize(newWidth, newHeight);
-      }
     }
     
     await sharpInstance.toFile(outputPath);
@@ -130,7 +117,7 @@ const capShortSide = (max) =>
 // Compress video file
 const compressVideo = async (filePath, options) => {
   const {
-    quality = 'medium', format: rawFormat = 'mp4', maxSize, codec = 'h264', resolution,
+    quality = 'medium', format: rawFormat, maxSize, codec = 'h264', resolution,
   } = options;
   const format = resolveFormat(filePath, rawFormat, VIDEO_FORMATS);
   if (!Object.hasOwn(VIDEO_CODECS, codec)) {
@@ -275,10 +262,11 @@ router.post('/:id', async (req, res, next) => {
     
     if (IMAGE_FORMATS.map(e => `.${e}`).includes(fileExt)) {
       // Image compression
-      outputPath = await compressImage(filePath, { 
-        quality: parseInt(quality) || 80, 
-        format: format || 'jpeg',
-        maxSize: maxSize ? parseInt(maxSize) : null
+      // A missing format means "keep it", as 'original' does. This used to
+      // default to 'jpeg', so a PNG sent without one came back as a JPEG.
+      outputPath = await compressImage(filePath, {
+        quality: parseInt(quality) || 80,
+        format
       });
     } else if (fileExt === '.pdf') {
       // PDF compression
@@ -289,7 +277,7 @@ router.post('/:id', async (req, res, next) => {
       // Video compression
       outputPath = await compressVideo(filePath, {
         quality: quality || 'medium',
-        format: format || 'mp4',
+        format,
         maxSize: maxSize ? parseInt(maxSize) : null,
         codec: codec || 'h264',
         resolution

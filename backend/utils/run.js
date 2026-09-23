@@ -19,4 +19,4 @@ const RUN = {
 // rather than filtered. Validation upstream is now defence in depth.
 const run = (file, args) => execFilePromise(file, args, RUN);
 
-module.exports = { run, RUN };
+module.exports = { run };
