@@ -27,12 +27,16 @@ const OptionSlider: React.FC<OptionSliderProps> = ({
       min={min}
       step={1}
       onValueChange={(values) => onChange(values[0])}
-      aria-label={rest['aria-label']}
     >
       <SliderPrimitive.Track className="relative h-1.5 w-full grow overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
         <SliderPrimitive.Range className="absolute h-full bg-zinc-900 dark:bg-zinc-100" />
       </SliderPrimitive.Track>
-      <SliderPrimitive.Thumb className="block h-4 w-4 rounded-full border-2 border-zinc-900 bg-white shadow transition-transform hover:scale-110 focus-ring dark:border-zinc-100 dark:bg-zinc-900" />
+      {/* The label goes on the thumb: it is the element that takes focus and
+          has role=slider, so on the root screen readers announced an unnamed
+          slider. */}
+      <SliderPrimitive.Thumb
+        aria-label={rest['aria-label']}
+        className="block h-4 w-4 rounded-full border-2 border-zinc-900 bg-white shadow transition-transform hover:scale-110 focus-ring dark:border-zinc-100 dark:bg-zinc-900" />
     </SliderPrimitive.Root>
     <span className="tnum w-14 shrink-0 text-right text-sm font-medium text-zinc-800 dark:text-zinc-100">
       {value}
