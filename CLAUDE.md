@@ -112,7 +112,10 @@ solution file (`"files": []` plus references), and plain `tsc` checks zero files
   the original was kept. Each tier now also caps peak bitrate at a share of the
   source's (45/55/80% for H.264, a quarter lower for H.265, scaled down further
   when the picture is), and by default caps the short side (720p / 1080p /
-  original). A `resolution` option (`source|1080|720|480`) overrides that; with
+  1440p). Nothing is ever kept at 4K: 1440p is the ceiling for every path,
+  including target size and an explicit `resolution` (`1440|1080|720|480`;
+  `source` is still accepted and means 1440). On the test server a 4K Best encode
+  ran at 0.08x real time. A `resolution` option overrides the tier's cap; with
   a target size, the resolution is picked from the bitrate the target allows.
   `codec: 'h265'` is MP4/MOV only and tagged `hvc1` for Apple players. See
   `VIDEO_SETTINGS` in `routes/compression.js`.

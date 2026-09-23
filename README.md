@@ -16,7 +16,8 @@ The tier maps onto whatever each encoder actually understands, so it does someth
 real in every case rather than sending a number that gets ignored.
 
 For video each tier also sets a resolution (*Smaller* up to 720p, *Balanced* up to
-1080p, *Best quality* the original, never enlarged) and caps the bitrate at a share
+1080p, *Best quality* up to 1440p, never enlarged - nothing is kept at 4K, since a
+smaller file is the point) and caps the bitrate at a share
 of the source's, so every tier is a real step down even for an already-lean clip.
 Per file you can pick the resolution yourself, switch to H.265 (MP4/MOV; about a
 quarter smaller, slower to encode, not playable everywhere), or aim at a target
@@ -124,7 +125,7 @@ stripping the prefix.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `POST` | `/upload` | multipart, field `files`, up to 10 files of 50 MB. Returns an `id` per file |
-| `POST` | `/compression/:id` | `{quality, format}`; for video also `maxSize` (target MB), `codec` (`h264`\|`h265`) and `resolution` (`source`\|`1080`\|`720`\|`480`) → sizes and ratio |
+| `POST` | `/compression/:id` | `{quality, format}`; for video also `maxSize` (target MB), `codec` (`h264`\|`h265`) and `resolution` (`1440`\|`1080`\|`720`\|`480`) → sizes and ratio |
 | `GET` | `/compression/download/:id` | the compressed bytes |
 | `POST` | `/conversion/:id` | `{format}`, plus `quality` for Office → PDF → sizes and formats |
 | `GET` | `/conversion/download/:id` | the converted bytes |

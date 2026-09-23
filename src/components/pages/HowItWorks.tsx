@@ -66,7 +66,7 @@ const MERGE_POINTS = [
 const VIDEO_TIER: Record<Tier, string> = {
   small: 'Video: up to 720p.',
   balanced: 'Video: up to 1080p.',
-  high: 'Video: original resolution.',
+  high: 'Video: up to 1440p.',
 };
 
 const HowItWorks: React.FC = () => {

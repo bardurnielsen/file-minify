@@ -84,30 +84,36 @@ const compressImage = async (filePath, options) => {
 //              lower, so on a lean source it is still the smaller codec rather
 //              than the same size at a better quality. Scaled down further
 //              when the picture is (see ceilingFor).
+// Nothing stays 4K: the point is a smaller file, and on the target server a
+// 1.5-minute 4K clip at full resolution took past the timeout (0.08x real
+// time). Best tops out at 1440p, which still looks excellent on any screen a
+// shared clip is watched on.
+const MAX_SHORT_SIDE = 1440;
 const VIDEO_SETTINGS = {
   h264: {
     low: { crf: '28', preset: 'slow', shortSide: 720, ceiling: 0.45, audio: '96k' },
     medium: { crf: '24', preset: 'slow', shortSide: 1080, ceiling: 0.55, audio: '128k' },
-    high: { crf: '21', preset: 'slow', ceiling: 0.8, audio: '128k' },
+    high: { crf: '21', preset: 'slow', shortSide: MAX_SHORT_SIDE, ceiling: 0.8, audio: '128k' },
   },
   h265: {
     low: { crf: '30', preset: 'medium', shortSide: 720, ceiling: 0.34, audio: '96k' },
     medium: { crf: '27', preset: 'medium', shortSide: 1080, ceiling: 0.41, audio: '128k' },
-    high: { crf: '24', preset: 'medium', ceiling: 0.6, audio: '128k' },
+    high: { crf: '24', preset: 'medium', shortSide: MAX_SHORT_SIDE, ceiling: 0.6, audio: '128k' },
   },
 };
 const VIDEO_CODECS = { h264: 'libx264', h265: 'libx265' };
 // HEVC is only muxed into MP4/MOV here; WebM and AVI would reject it or play
 // nowhere.
 const HEVC_FORMATS = ['mp4', 'mov'];
-// An explicit resolution choice: a short-side cap, or 'source' for none.
-// Absent means the tier (or, with a target size, the bitrate) decides.
-const RESOLUTIONS = { source: null, 1080: 1080, 720: 720, 480: 480 };
+// An explicit resolution choice: a short-side cap. Absent means the tier (or,
+// with a target size, the bitrate) decides. 'source' is still accepted from
+// API callers but means the 1440p ceiling, like everything else.
+const RESOLUTIONS = { source: MAX_SHORT_SIDE, 1440: 1440, 1080: 1080, 720: 720, 480: 480 };
 
 // With a target size and no explicit resolution, fit the picture to the bits:
 // a starved 1080p encode looks blockier than a clean 720p one.
 const shortSideForBitrate = (kbps) =>
-  kbps >= 5000 ? null : kbps >= 2500 ? 1080 : kbps >= 1000 ? 720 : 480;
+  kbps >= 5000 ? MAX_SHORT_SIDE : kbps >= 2500 ? 1080 : kbps >= 1000 ? 720 : 480;
 
 // Peak bitrate in kbps, or null when the source bitrate is unknown. Fewer
 // pixels need fewer bits, though not proportionally - hence the 0.75 power.

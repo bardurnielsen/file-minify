@@ -15,8 +15,8 @@ export type FileStatus = 'uploading' | 'ready' | 'queued' | 'processing' | 'done
 export type Tier = 'small' | 'balanced' | 'high';
 
 export type VideoCodec = 'h264' | 'h265';
-/** Short-side cap, or 'source' for none. */
-export type VideoResolution = 'source' | '1080' | '720' | '480';
+/** Short-side cap. 1440p is the ceiling: nothing is kept at 4K. */
+export type VideoResolution = '1440' | '1080' | '720' | '480';
 
 export type Route = 'compression' | 'conversion';
 /** Routes that serve a download; 'merge' produces one file from many. */

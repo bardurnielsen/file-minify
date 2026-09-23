@@ -168,7 +168,7 @@ export const describePlan = (file: FileItem) => {
   return `Compress · ${tierLabel(options.tier)}${videoExtras}`;
 };
 
-const resolutionLabel = (r: VideoResolution) => (r === 'source' ? 'original size' : `${r}p`);
+const resolutionLabel = (r: VideoResolution) => `${r}p`;
 
 // The backend only muxes HEVC into MP4 and MOV.
 const HEVC_EXTS = ['mp4', 'mov'];
