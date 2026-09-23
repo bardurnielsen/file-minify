@@ -2,12 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FileRejection, useDropzone } from 'react-dropzone';
 import { AnimatePresence, HTMLMotionProps, motion } from 'framer-motion';
 import { Download, Layers, RefreshCw, Trash2 } from 'lucide-react';
-import { FileItem, ProcessingOption, Tier } from '../../types';
+import { FileItem, FileType, ProcessingOption, Tier } from '../../types';
 import { KEEP_ORIGINAL } from '../../formats';
 import {
   ACCEPT,
   MAX_FILES_PER_DROP,
-  MAX_FILE_BYTES,
   detectType,
   isMergeReady,
   isMergeable,
@@ -28,12 +27,16 @@ import FileRow from './FileRow';
 import TierControl from './TierControl';
 import MergeDialog, { MergeRow, mergedFileName } from './MergeDialog';
 
-// Images and PDFs finish in well under a second; video can take minutes and
-// starves the box if too many run at once. Three keeps the queue moving.
+// Uploads, and processing of images and PDFs, which finish in well under a
+// second. Three keeps the queue moving.
 const CONCURRENCY = 3;
 // LibreOffice refuses to run two headless conversions at once (profile lock),
-// so Office files go through their own single-file lane.
+// so Office files are processed in their own single-file lane.
 const OFFICE_CONCURRENCY = 1;
+// Each video encode already uses every core it can get, so running several at
+// once only multiplies memory and makes all of them finish later. One at a
+// time also finishes them in the order they were started.
+const VIDEO_CONCURRENCY = 1;
 
 const createLimiter = (limit: number) => {
   let active = 0;
@@ -70,7 +73,9 @@ const saveBlob = (blob: Blob, name: string) => {
 
 const rejectionMessage = (r: FileRejection) => {
   const code = r.errors[0]?.code;
-  if (code === 'file-too-large') return `${r.file.name} is over 50 MB.`;
+  if (code === 'file-too-large') {
+    return `${r.file.name} is over ${formatBytes(useFiles.getState().maxFileBytes)}.`;
+  }
   if (code === 'file-invalid-type') return `${r.file.name} isn't a supported type.`;
   return `${r.file.name} couldn't be added.`;
 };
@@ -78,37 +83,48 @@ const rejectionMessage = (r: FileRejection) => {
 const FileProcessor: React.FC = () => {
   const files = useFiles((s) => s.files);
   const defaultTier = useFiles((s) => s.defaultTier);
+  const maxFileBytes = useFiles((s) => s.maxFileBytes);
   const merge = useFiles((s) => s.merge);
   const [mergeOpen, setMergeOpen] = useState(false);
   const { addToast } = useToast();
   const limiter = useRef(createLimiter(CONCURRENCY)).current;
   const officeLimiter = useRef(createLimiter(OFFICE_CONCURRENCY)).current;
+  const videoLimiter = useRef(createLimiter(VIDEO_CONCURRENCY)).current;
 
   // Always read the freshest copy inside async work; options can change while
   // a file waits in the queue and the run must honour what the row shows.
   const getFile = (id: string) => useFiles.getState().files.find((f) => f.id === id);
   const update = useFiles.getState().updateFile;
 
+  // Uploading and processing take separate slots: uploads share the general
+  // lane, and only the processing step waits in its type's lane. Otherwise a
+  // video dropped while another encodes couldn't even start uploading.
   const run = useCallback(
-    (id: string) => {
-      const lane = isOffice(getFile(id)?.type ?? 'other') ? officeLimiter : limiter;
-      return lane(async () => {
-        let file = getFile(id);
-        if (!file) return;
-        try {
-          if (!file.serverId) {
+    async (id: string) => {
+      const lane = (type: FileType) =>
+        isOffice(type) ? officeLimiter : type === 'video' ? videoLimiter : limiter;
+      try {
+        if (!getFile(id)?.serverId) {
+          await limiter(async () => {
+            const file = getFile(id);
+            if (!file) return;
             update(id, { status: 'uploading', uploadProgress: 0, error: undefined });
             const uploaded = await uploadFile(file.file, (fraction) =>
               update(id, { uploadProgress: fraction })
             );
             update(id, { serverId: uploaded.id, uploadProgress: 1 });
-          }
-          file = getFile(id);
-          if (!file?.serverId) return; // removed while uploading
-          if (file.hold) {
-            update(id, { status: 'ready' });
-            return;
-          }
+          });
+        }
+        const uploaded = getFile(id);
+        if (!uploaded?.serverId) return; // removed while uploading
+        if (uploaded.hold) {
+          update(id, { status: 'ready' });
+          return;
+        }
+        update(id, { status: 'queued' });
+        await lane(uploaded.type)(async () => {
+          const file = getFile(id);
+          if (!file?.serverId) return; // removed while queued
           const { type, options, serverId } = file;
           const route = routeFor(type, options);
           update(id, { status: 'processing', startedAt: Date.now(), result: undefined, error: undefined });
@@ -129,16 +145,16 @@ const FileProcessor: React.FC = () => {
               options,
             },
           });
-        } catch (error) {
-          if (!getFile(id)) return;
-          update(id, {
-            status: 'error',
-            error: error instanceof Error ? error.message : 'Something went wrong.',
-          });
-        }
-      });
+        });
+      } catch (error) {
+        if (!getFile(id)) return;
+        update(id, {
+          status: 'error',
+          error: error instanceof Error ? error.message : 'Something went wrong.',
+        });
+      }
     },
-    [limiter, officeLimiter, update]
+    [limiter, officeLimiter, videoLimiter, update]
   );
 
   const handleDrop = useCallback(
@@ -182,7 +198,7 @@ const FileProcessor: React.FC = () => {
   const { getRootProps, getInputProps, open, isDragActive, isDragReject } = useDropzone({
     onDrop: handleDrop,
     accept: ACCEPT,
-    maxSize: MAX_FILE_BYTES,
+    maxSize: maxFileBytes,
     multiple: true,
     noClick: true,
     noKeyboard: true,

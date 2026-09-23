@@ -122,3 +122,15 @@ export const mergeFiles = async (ids: string[]): Promise<MergeResponse> => {
   }
   return json.data;
 };
+
+/** Server limits. Falls back to null when unreachable; callers keep their default. */
+export const fetchConfig = async (): Promise<{ maxFileBytes: number } | null> => {
+  try {
+    const response = await fetch(`${API}/config`);
+    if (!response.ok) return null;
+    const json = await response.json();
+    return Number(json?.maxFileBytes) > 0 ? { maxFileBytes: Number(json.maxFileBytes) } : null;
+  } catch {
+    return null;
+  }
+};

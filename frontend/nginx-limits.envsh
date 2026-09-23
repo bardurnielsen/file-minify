@@ -1,0 +1,14 @@
+#!/bin/sh
+# Sourced by the nginx image's entrypoint before it renders the templates, so
+# the values below reach envsubst. Inputs come from Compose (see .env.example):
+#   FM_MAX_FILE_MB          per-file upload limit in MB (default 50)
+#   FM_PROCESS_TIMEOUT_MIN  backend per-command timeout in minutes (default 5)
+
+case "${FM_MAX_FILE_MB:-}" in ''|*[!0-9]*) FM_MAX_FILE_MB=50 ;; esac
+case "${FM_PROCESS_TIMEOUT_MIN:-}" in ''|*[!0-9]*) FM_PROCESS_TIMEOUT_MIN=5 ;; esac
+
+# One extra MB covers the multipart headers around a single file.
+export FM_MAX_BODY="$((FM_MAX_FILE_MB + 1))m"
+# Three commands' worth plus a minute, so the backend's own timeout fires and
+# returns a real error before nginx gives up with a bare 504.
+export FM_PROXY_TIMEOUT="$((FM_PROCESS_TIMEOUT_MIN * 3 + 1))m"

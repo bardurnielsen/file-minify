@@ -5,22 +5,26 @@ import { FileType, Tier } from '../../types';
 import { TIERS, TYPE_LABEL } from '../../processing';
 import { Button } from '../ui/button';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { useFiles } from '../../hooks/useFiles';
+import { formatBytes } from '../../lib/format';
 
-const STEPS = [
+// Bodies are functions of the upload limit, which is a server setting.
+const STEPS: { icon: typeof ArrowDown; title: string; body: (maxFile: string) => string }[] = [
   {
     icon: ArrowDown,
     title: 'Drop files',
-    body: 'Up to ten at a time, 50 MB each. Images, video, PDFs and Office documents.',
+    body: (maxFile: string) =>
+      `Up to ten at a time, ${maxFile} each. Images, video, PDFs and Office documents.`,
   },
   {
     icon: Wand2,
     title: 'We pick the settings',
-    body: 'Office files become PDFs, everything else is shrunk in its own format. Videos wait for a click, so you can aim for a file size or resolution first.',
+    body: () => 'Office files become PDFs, everything else is shrunk in its own format. Videos wait for a click, so you can aim for a file size or resolution first.',
   },
   {
     icon: Download,
     title: 'Download',
-    body: 'See exactly what changed - before and after sizes, and how much you saved - then download one file or all of them.',
+    body: () => 'See exactly what changed - before and after sizes, and how much you saved - then download one file or all of them.',
   },
 ];
 
@@ -67,6 +71,7 @@ const VIDEO_TIER: Record<Tier, string> = {
 
 const HowItWorks: React.FC = () => {
   const { setCurrentPage } = useNavigation();
+  const maxFile = formatBytes(useFiles((s) => s.maxFileBytes));
   return (
     <div className="space-y-12">
       <header>
@@ -91,7 +96,7 @@ const HowItWorks: React.FC = () => {
               <span className="text-xs font-medium text-zinc-400">Step {i + 1}</span>
             </div>
             <h2 className="mt-4 font-semibold text-zinc-900 dark:text-zinc-50">{step.title}</h2>
-            <p className="mt-1 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">{step.body}</p>
+            <p className="mt-1 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">{step.body(maxFile)}</p>
           </li>
         ))}
       </ol>

@@ -1,6 +1,7 @@
 import { canBecomePdf, extensionOf, KEEP_ORIGINAL } from './formats';
 import { FileItem, FileType, ProcessingOption, Route, Tier, VideoResolution } from './types';
 
+/** Until GET /config answers; the server's MAX_FILE_MB is the real limit. */
 export const MAX_FILE_BYTES = 50 * 1024 * 1024;
 export const MAX_FILES_PER_DROP = 10;
 

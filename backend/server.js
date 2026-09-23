@@ -113,6 +113,15 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
+// Limits the frontend enforces before uploading. They come from the server's
+// environment (MAX_FILE_SIZE), so changing them is a Compose setting, not code.
+app.get('/config', (req, res) => {
+  res.status(200).json({
+    maxFileBytes: uploadRoutes.MAX_FILE_BYTES,
+    maxFiles: uploadRoutes.MAX_FILES,
+  });
+});
+
 // Error handling middleware
 app.use(errorHandler);
 

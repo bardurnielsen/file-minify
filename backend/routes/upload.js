@@ -79,14 +79,19 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
+// Per-file limit in bytes. Exported so GET /config can tell the frontend, which
+// then checks files before uploading them - one setting, not three copies.
+const MAX_FILE_BYTES = parseSize(process.env.MAX_FILE_SIZE, 52428800); // 50MB default
+const MAX_FILES = 10;
+
 // Configure multer upload
 const upload = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: parseSize(process.env.MAX_FILE_SIZE, 52428800), // 50MB default
+    fileSize: MAX_FILE_BYTES,
   }
-}).array('files', 10);
+}).array('files', MAX_FILES);
 
 // Handle file upload endpoint
 router.post('/', (req, res) => {
@@ -166,3 +171,5 @@ router.delete('/:id', (req, res) => {
 });
 
 module.exports = router;
+module.exports.MAX_FILE_BYTES = MAX_FILE_BYTES;
+module.exports.MAX_FILES = MAX_FILES;
