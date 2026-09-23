@@ -6,20 +6,37 @@ updates:
     directory: /            # frontend
     schedule: { interval: weekly }
     groups:
+      # react and react-dom (and their types) only work at the same major;
+      # bumped separately, each PR fails on its own.
+      react:
+        patterns: [react, react-dom, "@types/react", "@types/react-dom"]
       frontend-minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # Tailwind 4 replaces tailwind.config.js with CSS-first config: a
+      # migration to do deliberately, not a weekly bump.
+      - dependency-name: tailwindcss
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: npm
     directory: /backend
     schedule: { interval: weekly }
     groups:
       backend-minor-and-patch:
         update-types: [minor, patch]
+  # Node stays on an LTS line: Dependabot offers every major, including the
+  # odd, short-lived ones (25). Move to the next LTS deliberately.
   - package-ecosystem: docker
     directory: /frontend    # node:22-alpine build stage, nginx:alpine
     schedule: { interval: weekly }
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: docker
     directory: /backend     # node:22-bookworm-slim
     schedule: { interval: weekly }
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
