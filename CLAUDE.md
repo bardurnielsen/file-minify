@@ -160,5 +160,11 @@ the download and delete routes, MIME rejection, the upload size cap, and the
 same-origin check in both directions. Those last cases are regression tests: if
 one starts failing, a hole has reopened.
 
+CI (`.github/workflows/docker-build.yml`) runs one job per image: `frontend`
+builds (and so type-checks), `backend` builds, starts that exact image and runs
+the smoke suite. Each caches under its own `gha` scope - with a shared scope the
+two overwrote each other and the apt layer was rebuilt every run. Build contexts
+are trimmed per image by `<Dockerfile>.dockerignore`. Docs-only changes skip CI.
+
 `curl` needs an explicit `;type=<mime>` on `-F` uploads or the MIME allowlist
 rejects the file.

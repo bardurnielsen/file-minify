@@ -1,0 +1,6 @@
+# Build context for backend/Dockerfile only. It copies nothing outside backend/,
+# so send nothing else - and never a host node_modules, which would land on top
+# of the one `npm ci` built for the image.
+*
+!backend
+backend/node_modules
