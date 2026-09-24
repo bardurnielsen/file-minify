@@ -5,6 +5,11 @@
     <link rel="icon" href="/favicon.ico" sizes="32x32">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <!-- Installable as an app (Android, desktop Chrome and Edge). Named .json
+         rather than .webmanifest because nginx's stock MIME table knows it. -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#09090b" media="(prefers-color-scheme: dark)">
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>FileMinify &mdash; smaller files, nothing to fiddle with</title>
     <meta name="description" content="Drop images, video, PDFs or Office documents and get them back smaller. Good defaults, no settings to wade through." />

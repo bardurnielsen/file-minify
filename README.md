@@ -97,7 +97,10 @@ cd file-minify
 docker compose up -d --build
 ```
 
-Then open **http://localhost:3051**. It works the same from a phone on your network.
+Then open **http://localhost:3051**. It works the same from a phone on your network,
+and can be installed as an app (Chrome or Edge: *Install app*; Android: *Add to Home
+screen*), opening full-screen with its own icon. Browsers only offer that over HTTPS,
+or on `localhost`, so a server reached by plain `http://` needs HTTPS in front of it.
 
 <p align="center">
 <img alt="The landing page: a large drop area with a quality control underneath" src="docs/screenshots/hero.png" width="557">
