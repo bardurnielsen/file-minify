@@ -74,6 +74,11 @@ export interface FileItem {
   serverId?: string;
   file: File;
   name: string;
+  /**
+   * A name the user gave the file, without its extension: a camera clip
+   * arrives as 1000123456.mp4. Used for display, download and share.
+   */
+  baseName?: string;
   size: number;
   type: FileType;
   status: FileStatus;

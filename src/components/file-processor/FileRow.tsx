@@ -8,13 +8,24 @@ import {
   Film,
   Image as ImageIcon,
   Presentation,
+  Pencil,
   RefreshCw,
+  Share2,
   SlidersHorizontal,
   X,
 } from 'lucide-react';
 import { FileItem, FileType, ProcessingOption } from '../../types';
 import { formatBytes, percentChange, cn } from '../../lib/format';
-import { describePlan, describeResult, isOffice, isStale, targetFormatFor, tierLabel } from '../../processing';
+import {
+  cleanBaseName,
+  describePlan,
+  describeResult,
+  displayName,
+  isOffice,
+  isStale,
+  targetFormatFor,
+  tierLabel,
+} from '../../processing';
 import { extensionOf } from '../../formats';
 import { Button } from '../ui/button';
 import AdjustPanel from './AdjustPanel';
@@ -22,10 +33,14 @@ import AdjustPanel from './AdjustPanel';
 interface FileRowProps {
   file: FileItem;
   onDownload: () => void;
+  /** Present only where this browser can share the file. */
+  onShare?: () => void;
   onRemove: () => void;
   onRerun: (options?: ProcessingOption) => void;
   /** Release a held file (see FileItem.hold) with these settings. */
   onStart: (options: ProcessingOption) => void;
+  /** A new name without extension; empty goes back to the original. */
+  onRename: (baseName: string) => void;
 }
 
 const TYPE_ICON: Record<FileType, React.ComponentType<{ className?: string }>> = {
@@ -98,7 +113,75 @@ const Thumb: React.FC<{ file: FileItem }> = ({ file }) => {
   );
 };
 
-const FileRow: React.FC<FileRowProps> = ({ file, onDownload, onRemove, onRerun, onStart }) => {
+/**
+ * The file's name, editable in place: a camera clip arrives as 1000123456.mp4
+ * and should leave as something the recipient understands. Only the part
+ * before the extension is editable, so a rename can't make a file unopenable.
+ */
+const NameEditor: React.FC<{ file: FileItem; onRename: (baseName: string) => void }> = ({ file, onRename }) => {
+  const [editing, setEditing] = useState(false);
+  const name = displayName(file);
+  const ext = extensionOf(file.name);
+  const base = ext ? name.slice(0, -(ext.length + 1)) : name;
+  const [draft, setDraft] = useState(base);
+
+  const commit = () => {
+    setEditing(false);
+    const cleaned = cleanBaseName(draft);
+    // Empty, or the original name again, clears the rename.
+    const original = ext ? file.name.slice(0, -(ext.length + 1)) : file.name;
+    onRename(cleaned === original ? '' : cleaned);
+  };
+
+  if (editing) {
+    return (
+      <form
+        className="flex min-w-0 items-center gap-1"
+        onSubmit={(e) => {
+          e.preventDefault();
+          commit();
+        }}
+      >
+        <input
+          autoFocus
+          aria-label={`New name for ${name}`}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onFocus={(e) => e.target.select()}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              setDraft(base);
+              setEditing(false);
+            }
+          }}
+          maxLength={120}
+          className="min-w-0 flex-1 rounded-md border border-zinc-300 bg-white px-2 py-0.5 text-sm font-medium text-zinc-900 focus-ring dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+        />
+        {ext && <span className="shrink-0 text-sm text-zinc-400">.{ext}</span>}
+      </form>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setDraft(base);
+        setEditing(true);
+      }}
+      aria-label={`Rename ${name}`}
+      title="Rename"
+      className="group/name flex min-w-0 items-center gap-1.5 rounded-md text-left focus-ring"
+    >
+      <span className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-50">{name}</span>
+      <Pencil className="h-3.5 w-3.5 shrink-0 text-zinc-400 opacity-60 transition-opacity group-hover/name:opacity-100" />
+    </button>
+  );
+};
+
+const FileRow: React.FC<FileRowProps> = ({ file, onDownload, onShare, onRemove, onRerun, onStart, onRename }) => {
   const [adjusting, setAdjusting] = useState(false);
   const busy = file.status === 'uploading' || file.status === 'queued' || file.status === 'processing';
   const elapsed = useElapsedSeconds(file.startedAt, file.status === 'processing');
@@ -289,12 +372,12 @@ const FileRow: React.FC<FileRowProps> = ({ file, onDownload, onRemove, onRerun, 
             : 'border-zinc-200/80 dark:border-zinc-800'
       )}
     >
-      <div className="flex items-start gap-3 px-4 py-3.5 sm:items-center sm:gap-4 sm:px-5">
+      <div className="flex flex-wrap items-start gap-3 px-4 py-3.5 sm:flex-nowrap sm:items-center sm:gap-4 sm:px-5">
         <Thumb file={file} />
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-50">{file.name}</p>
+            <NameEditor file={file} onRename={onRename} />
             {stale && (
               <span className="shrink-0 rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
                 Settings changed
@@ -305,11 +388,24 @@ const FileRow: React.FC<FileRowProps> = ({ file, onDownload, onRemove, onRerun, 
           <div className={cn('mt-1.5', file.status === 'done' && 'sm:mt-1')}>{renderStatus()}</div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-1 self-center">
+        {/* On a phone a finished file's buttons get a line of their own, so the
+            name - the one you may just have typed - isn't squeezed to "PXL_2...". */}
+        <div
+          className={cn(
+            'flex shrink-0 items-center gap-1 sm:self-center',
+            file.status === 'done' ? 'w-full justify-end sm:w-auto' : 'self-center'
+          )}
+        >
           {file.status === 'done' && result && (
-            <Button variant="primary" size="sm" onClick={onDownload} aria-label={`Download ${file.name}`}>
+            <Button variant="primary" size="sm" onClick={onDownload} aria-label={`Download ${displayName(file)}`}>
               <Download className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Download</span>
+              Download
+            </Button>
+          )}
+          {file.status === 'done' && result && onShare && (
+            <Button variant="secondary" size="sm" onClick={onShare} aria-label={`Share ${displayName(file)}`}>
+              <Share2 className="h-3.5 w-3.5" />
+              Share
             </Button>
           )}
           {file.status === 'error' && (

@@ -100,6 +100,26 @@ const resolutionName = (shortSide: number) => (shortSide >= 2160 ? '4K' : `${sho
 const presetFile = (d: ResultDetails) =>
   d.preset === 'target' ? `${d.targetMb}mb` : d.preset ? PRESET_NAME[d.preset].file : undefined;
 
+/** The file's name as shown and saved: the user's name for it, if any. */
+export const displayName = (file: Pick<FileItem, 'name' | 'baseName'>) => {
+  if (!file.baseName) return file.name;
+  const ext = extensionOf(file.name);
+  return ext ? `${file.baseName}.${ext}` : file.baseName;
+};
+
+/**
+ * A user-typed name made safe as a file name: no path or reserved characters
+ * (/ \ : * ? " < > | and control codes), no leading or trailing dots and
+ * spaces, at most 120 characters. Empty means "keep the original".
+ */
+export const cleanBaseName = (input: string) =>
+  input
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s.]+|[\s.]+$/g, '')
+    .slice(0, 120);
+
 /**
  * The downloaded file's name, e.g. clip-720p-h265-smaller.mp4 or
  * scan-balanced.pdf. Conversions are named by their new format; a kept

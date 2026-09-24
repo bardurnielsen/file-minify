@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FileRejection, useDropzone } from 'react-dropzone';
 import { fromEvent } from 'file-selector';
 import { AnimatePresence, HTMLMotionProps, motion } from 'framer-motion';
-import { Download, Layers, RefreshCw, Trash2 } from 'lucide-react';
-import { FileItem, FileType, ProcessingOption, Tier } from '../../types';
+import { Download, Layers, RefreshCw, Share2, Trash2 } from 'lucide-react';
+import { DownloadRoute, FileItem, FileType, ProcessingOption, Tier } from '../../types';
 import { KEEP_ORIGINAL } from '../../formats';
 import {
   ACCEPT,
@@ -15,11 +15,13 @@ import {
   isStale,
   mergeSourceId,
   outputNameFor,
+  displayName,
   requestBodyFor,
   routeFor,
 } from '../../processing';
 import { MergeError, deleteUpload, downloadBlob, mergeFiles, processFile, uploadFile } from '../../lib/api';
 import { formatBytes, percentChange, plural, uid, cn } from '../../lib/format';
+import { canShareFiles, mimeFor, tapHasExpired } from '../../lib/share';
 import { useFiles } from '../../hooks/useFiles';
 import { useToast } from '../ui/toaster';
 import { Button } from '../ui/button';
@@ -248,6 +250,7 @@ const FileProcessor: React.FC = () => {
     if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
     if (file.serverId) void deleteUpload(file.serverId);
     useFiles.getState().removeFile(id);
+    shareCache.clear();
   };
 
   const clearAll = () => {
@@ -256,6 +259,7 @@ const FileProcessor: React.FC = () => {
       if (f.serverId) void deleteUpload(f.serverId);
     });
     useFiles.getState().clearFiles();
+    shareCache.clear();
   };
 
   const download = async (id: string) => {
@@ -265,7 +269,7 @@ const FileProcessor: React.FC = () => {
       // Route and options come from the result, i.e. what actually produced the
       // file - not the row's current (possibly edited) settings.
       const blob = await downloadBlob(file.result.route, file.result.processedId);
-      saveBlob(blob, outputNameFor(file.name, file.type, file.result));
+      saveBlob(blob, outputNameFor(displayName(file), file.type, file.result));
     } catch (error) {
       addToast({
         type: 'error',
@@ -274,6 +278,71 @@ const FileProcessor: React.FC = () => {
         duration: 6000,
       });
     }
+  };
+
+  // Sharing hands the file itself to the phone's share sheet (email, chat...)
+  // without saving it first. Fetched files are kept, keyed by result and
+  // name, so that when a big video took longer than the browser's tap window
+  // the second tap shares at once.
+  const shareCache = useRef(new Map<string, File>()).current;
+  type Shareable = { route: DownloadRoute; id: string; name: string };
+
+  const shareItems = async (items: Shareable[]) => {
+    const readyAgain = () =>
+      addToast({
+        type: 'info',
+        title: 'Ready to share',
+        description: `${items.length > 1 ? 'The files are' : 'The file is'} ready. Tap Share again.`,
+        duration: 8000,
+      });
+    try {
+      const files = await Promise.all(
+        items.map(async ({ route, id, name }) => {
+          const key = `${route}:${id}:${name}`;
+          const cached = shareCache.get(key);
+          if (cached) return cached;
+          const blob = await downloadBlob(route, id);
+          const file = new File([blob], name, { type: mimeFor(name) });
+          shareCache.set(key, file);
+          return file;
+        })
+      );
+      if (tapHasExpired()) return readyAgain();
+      await navigator.share({ files });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return; // share sheet closed
+      if (error instanceof DOMException && error.name === 'NotAllowedError') return readyAgain();
+      addToast({
+        type: 'error',
+        title: 'Sharing failed',
+        description: error instanceof Error ? error.message : 'Please try again.',
+        duration: 6000,
+      });
+    }
+  };
+
+  const shareableOf = (file: FileItem): Shareable | null =>
+    file.result
+      ? {
+          route: file.result.route,
+          id: file.result.processedId,
+          name: outputNameFor(displayName(file), file.type, file.result),
+        }
+      : null;
+
+  const share = (id: string) => {
+    const item = shareableOf(getFile(id)!);
+    if (item) void shareItems([item]);
+  };
+
+  const finishedShareables = (list: FileItem[]) =>
+    list.filter((f) => f.status === 'done').map(shareableOf).filter((i): i is Shareable => !!i);
+
+  const shareAll = () => void shareItems(finishedShareables(useFiles.getState().files));
+
+  const shareMerged = () => {
+    const m = useFiles.getState().merge;
+    if (m.result) void shareItems([{ route: 'merge', id: m.result.id, name: mergedFileName(m.name) }]);
   };
 
   const downloadAll = async () => {
@@ -370,6 +439,14 @@ const FileProcessor: React.FC = () => {
   }, [files]);
 
   const hasFiles = files.length > 0;
+  // Share buttons only where this browser can share those very files.
+  const finishedNames = finishedShareables(files).map((i) => i.name);
+  const canShareAll = summary.done >= 2 && summary.busy === 0 && canShareFiles(finishedNames);
+  const canShareMerged = !!merge.result && canShareFiles([mergedFileName(merge.name)]);
+  const shareHandlerFor = (file: FileItem) => {
+    const item = shareableOf(file);
+    return item && canShareFiles([item.name]) ? () => share(file.id) : undefined;
+  };
   const allTiersEqual = files.every((f) => f.options.tier === files[0]?.options.tier);
   const toolbarTier: Tier = hasFiles && allTiersEqual ? files[0].options.tier : defaultTier;
 
@@ -478,6 +555,12 @@ const FileProcessor: React.FC = () => {
                     Download all
                   </Button>
                 )}
+                {canShareAll && (
+                  <Button variant="secondary" size="sm" onClick={shareAll}>
+                    <Share2 className="h-3.5 w-3.5" />
+                    Share all
+                  </Button>
+                )}
                 <Button variant="ghost" size="sm" onClick={clearAll} aria-label="Clear all files">
                   <Trash2 className="h-3.5 w-3.5" />
                   Clear
@@ -491,6 +574,7 @@ const FileProcessor: React.FC = () => {
                   merge={merge}
                   onEdit={() => setMergeOpen(true)}
                   onDownload={downloadMerged}
+                  onShare={canShareMerged ? shareMerged : undefined}
                   onDismiss={() => useFiles.getState().resetMerge()}
                 />
               </div>
@@ -503,9 +587,11 @@ const FileProcessor: React.FC = () => {
                     key={file.id}
                     file={file}
                     onDownload={() => download(file.id)}
+                    onShare={shareHandlerFor(file)}
                     onRemove={() => remove(file.id)}
                     onRerun={(options) => rerun(file.id, options)}
                     onStart={(options) => start(file.id, options)}
+                    onRename={(baseName) => update(file.id, { baseName: baseName || undefined })}
                   />
                 ))}
               </AnimatePresence>
@@ -548,6 +634,7 @@ const FileProcessor: React.FC = () => {
         onChange={(updates) => useFiles.getState().setMerge(updates)}
         onRun={runMerge}
         onDownload={downloadMerged}
+        onShare={canShareMerged ? shareMerged : undefined}
       />
 
       {!hasFiles && (

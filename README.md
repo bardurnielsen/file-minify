@@ -76,6 +76,14 @@ else from the source's metadata is kept, so a phone's GPS location does not trav
 with a file you email. Phone photos are turned upright before their orientation tag
 is dropped.
 
+**Rename and share** — tap a file's name to rename it before it leaves (a phone
+camera clip arrives as `1000123456.mp4`); the label is kept, so it goes out as
+`pump-3-leak-720p-h265-smaller.mp4`. Where the browser supports it, **Share** hands a
+finished file, all of them at once, or the merged PDF straight to the phone's share
+sheet — email, chat — without saving it first. Browsers only allow that on a secure
+page (HTTPS or `localhost`), and phones only share certain types (MP4 and WebM video,
+images, PDF), so the button appears only where it will work; Download is always there.
+
 **Honest results** — when re-encoding would make a file *larger* (already-optimised
 PDFs and video often do), the original is kept and reported as-is instead of being
 presented as a saving. A PDF that needs a password to open is refused with a clear
