@@ -135,6 +135,14 @@ solution file (`"files": []` plus references), and plain `tsc` checks zero files
   the kernel to place each worker thread's memory (a NUMA optimisation); newer
   Docker seccomp profiles refuse that call without CAP_SYS_NICE, so it prints
   one line per thread and carries on. Don't grant the capability to silence it.
+- **Installable (PWA).** `public/manifest.json` (named .json because nginx's
+  stock MIME table has no .webmanifest; don't add a `types` block, it replaces
+  the whole table) and `public/icons/`, rendered from `favicon.svg`'s
+  light-scheme colours; the maskable ones have the glyph scaled to 0.85 so it
+  stays inside Android's 80% safe zone. Browsers install only from a secure
+  origin, so over plain http on the LAN it needs HTTPS in front (or Chrome's
+  "insecure origins treated as secure" flag). `e2e/tests/install.spec.ts` asks
+  Chrome for installability errors.
 - **Results describe themselves.** `POST /compression` returns `details` (video:
   preset, codec, output and source short side; images: quality; PDFs: preset),
   null when the original was kept. `outputNameFor` builds the download name from
