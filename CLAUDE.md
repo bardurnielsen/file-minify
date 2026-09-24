@@ -135,6 +135,15 @@ solution file (`"files": []` plus references), and plain `tsc` checks zero files
   the kernel to place each worker thread's memory (a NUMA optimisation); newer
   Docker seccomp profiles refuse that call without CAP_SYS_NICE, so it prints
   one line per thread and carries on. Don't grant the capability to silence it.
+- **Rename and share.** `FileItem.baseName` is a user-given name without the
+  extension (`cleanBaseName` strips path and reserved characters);
+  `displayName()` is what every name shown, downloaded or shared uses. Share
+  (`lib/share.ts`) uses the Web Share API: shown only when `canShareFiles()`
+  says this browser can share those exact names and types (secure context
+  needed; Chrome on Android won't share .mov/.avi). share() must run within
+  the tap's activation window, so a fetch that outlasts it caches the File
+  and asks for a second tap, which shares at once. `e2e/tests/share.spec.ts`
+  fakes the share sheet to check names, types and contents.
 - **Installable (PWA).** `public/manifest.json` (named .json because nginx's
   stock MIME table has no .webmanifest; don't add a `types` block, it replaces
   the whole table) and `public/icons/`, rendered from `favicon.svg`'s

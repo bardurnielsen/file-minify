@@ -10,11 +10,12 @@ import {
   Layers,
   Pencil,
   Plus,
+  Share2,
   X,
 } from 'lucide-react';
 import { FileItem, MergeState } from '../../types';
 import { formatBytes, plural, cn } from '../../lib/format';
-import { isMergeable, isMergeReady, TYPE_LABEL } from '../../processing';
+import { displayName, isMergeable, isMergeReady, TYPE_LABEL } from '../../processing';
 import { extensionOf } from '../../formats';
 import { Button } from '../ui/button';
 
@@ -26,6 +27,8 @@ interface MergeDialogProps {
   onChange: (updates: Partial<MergeState>) => void;
   onRun: () => void;
   onDownload: () => void;
+  /** Present only where this browser can share the merged PDF. */
+  onShare?: () => void;
 }
 
 /** What the download will actually be called. */
@@ -81,7 +84,7 @@ const OrderRow: React.FC<{
       <span className="tnum w-5 shrink-0 text-center text-xs font-medium text-zinc-400">{index + 1}</span>
       <Thumb file={file} />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-50">{file.name}</p>
+        <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-50">{displayName(file)}</p>
         <p className="truncate text-xs text-zinc-400 dark:text-zinc-500">
           {TYPE_LABEL[file.type]} · {formatBytes(file.size)}
           {!ready && ' · still uploading'}
@@ -103,7 +106,7 @@ const OrderRow: React.FC<{
   );
 };
 
-const MergeDialog: React.FC<MergeDialogProps> = ({ open, onOpenChange, files, merge, onChange, onRun, onDownload }) => {
+const MergeDialog: React.FC<MergeDialogProps> = ({ open, onOpenChange, files, merge, onChange, onRun, onDownload, onShare }) => {
   const byId = new Map(files.map((f) => [f.id, f]));
   const included = merge.order.map((id) => byId.get(id)).filter((f): f is FileItem => !!f);
   const leftOut = files.filter((f) => isMergeable(f) && !merge.order.includes(f.id));
@@ -174,7 +177,7 @@ const MergeDialog: React.FC<MergeDialogProps> = ({ open, onOpenChange, files, me
                 <ul className="mt-1.5 space-y-1">
                   {leftOut.map((file) => (
                     <li key={file.id} className="flex items-center justify-between gap-3 text-sm">
-                      <span className="truncate text-zinc-600 dark:text-zinc-300">{file.name}</span>
+                      <span className="truncate text-zinc-600 dark:text-zinc-300">{displayName(file)}</span>
                       <Button variant="ghost" size="sm" onClick={() => include(file.id)}>
                         <Plus className="h-3.5 w-3.5" />
                         Add
@@ -191,7 +194,7 @@ const MergeDialog: React.FC<MergeDialogProps> = ({ open, onOpenChange, files, me
                 <ul className="mt-1.5 space-y-1">
                   {unmergeable.map((file) => (
                     <li key={file.id} className="flex items-center justify-between gap-3 text-sm">
-                      <span className="truncate text-zinc-500 dark:text-zinc-400">{file.name}</span>
+                      <span className="truncate text-zinc-500 dark:text-zinc-400">{displayName(file)}</span>
                       <span className="shrink-0 text-xs text-zinc-400">{TYPE_LABEL[file.type]} can&apos;t become a PDF</span>
                     </li>
                   ))}
@@ -232,10 +235,18 @@ const MergeDialog: React.FC<MergeDialogProps> = ({ open, onOpenChange, files, me
                     {plural(merge.result.pageCount, 'page')} from {plural(merge.result.fileCount, 'file')} · {formatBytes(merge.result.size)}
                   </p>
                 </div>
-                <Button variant="primary" size="sm" onClick={onDownload}>
-                  <Download className="h-3.5 w-3.5" />
-                  Download
-                </Button>
+                <div className="flex shrink-0 gap-1.5">
+                  <Button variant="primary" size="sm" onClick={onDownload}>
+                    <Download className="h-3.5 w-3.5" />
+                    Download
+                  </Button>
+                  {onShare && (
+                    <Button variant="secondary" size="sm" onClick={onShare}>
+                      <Share2 className="h-3.5 w-3.5" />
+                      Share
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
             {merge.status === 'error' && (
@@ -298,8 +309,9 @@ export const MergeRow: React.FC<{
   merge: MergeState;
   onEdit: () => void;
   onDownload: () => void;
+  onShare?: () => void;
   onDismiss: () => void;
-}> = ({ merge, onEdit, onDownload, onDismiss }) => (
+}> = ({ merge, onEdit, onDownload, onShare, onDismiss }) => (
   <div
     className={cn(
       'flex items-center gap-3 rounded-2xl border px-4 py-3.5 sm:gap-4 sm:px-5',
@@ -330,9 +342,15 @@ export const MergeRow: React.FC<{
     </div>
     <div className="flex shrink-0 items-center gap-1">
       {merge.status === 'done' && (
-        <Button variant="primary" size="sm" onClick={onDownload}>
+        <Button variant="primary" size="sm" onClick={onDownload} aria-label="Download the merged PDF">
           <Download className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Download</span>
+        </Button>
+      )}
+      {merge.status === 'done' && onShare && (
+        <Button variant="secondary" size="sm" onClick={onShare} aria-label="Share the merged PDF">
+          <Share2 className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Share</span>
         </Button>
       )}
       <Button variant="ghost" size="icon" aria-label="Edit merge" onClick={onEdit} disabled={merge.status === 'running'}>

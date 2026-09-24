@@ -49,6 +49,12 @@ test('README screenshots', async ({ page, browser }) => {
   // Tall enough that the finished results card fits inside the window: a
   // margin crop can only take what is on screen.
   await page.setViewportSize({ width: 1100, height: 1300 });
+  // Show the Share buttons a phone shows: this headless Linux browser has no
+  // share sheet, so the app would hide them. Nothing is shared here.
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => true });
+    Object.defineProperty(navigator, 'share', { configurable: true, value: async () => {} });
+  });
   // The app's dark theme, chosen the way a visitor's system setting would.
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');
