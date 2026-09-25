@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer } from 'react';
+import React, { createContext, useContext, useReducer, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XCircle, AlertTriangle, Info, X } from 'lucide-react';
 
@@ -37,9 +37,12 @@ function toastReducer(state: Toast[], action: ToastAction): Toast[] {
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, dispatch] = useReducer(toastReducer, []);
+  // Ids from a counter, not the clock: two toasts in the same millisecond got
+  // the same id, and reading the clock here isn't pure.
+  const nextId = useRef(0);
 
   const addToast = (toast: Omit<Toast, 'id'>) => {
-    const id = Date.now().toString();
+    const id = String(++nextId.current);
     const duration = toast.duration || 5000; // Default 5 seconds
     
     dispatch({ type: 'ADD_TOAST', toast: { ...toast, id, duration } });

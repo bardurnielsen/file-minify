@@ -39,6 +39,12 @@ is the type check and lint. It must be `tsc -b`: the root tsconfig.json is a
 solution file (`"files": []` plus references), and plain `tsc` checks zero files
 - it did, silently, until the build was fixed. No test framework is configured.
 
+Lint is ESLint 10 with react-hooks 7, whose recommended set includes the React
+Compiler rules: render must be pure (no `Date.now()` or other impure calls while
+rendering) and state isn't set straight inside an effect. To follow a prop, keep
+its previous value in state and adjust during render (see `FileRow`'s `wasBusy`
+and `AdjustPanel`'s `followed`); errors fail the build.
+
 ## Architecture
 
 ### Frontend

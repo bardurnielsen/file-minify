@@ -54,13 +54,15 @@ const TYPE_ICON: Record<FileType, React.ComponentType<{ className?: string }>> =
 };
 
 const useElapsedSeconds = (since: number | undefined, active: boolean) => {
-  const [now, setNow] = useState(Date.now());
+  // Lazy: the clock is read once at mount, not on every render (render must
+  // be pure). Until the first tick `now` can predate `since`, hence the clamp.
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!active) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, [active]);
-  return since && active ? Math.floor((now - since) / 1000) : 0;
+  return since && active ? Math.max(0, Math.floor((now - since) / 1000)) : 0;
 };
 
 /** Counts up to the target so a result lands rather than appears. */
@@ -191,9 +193,13 @@ const FileRow: React.FC<FileRowProps> = ({ file, onDownload, onShare, onRemove, 
   // A held file shows its settings from the start, while it is still uploading.
   const showPanel = !!file.hold || (adjusting && !busy);
 
-  useEffect(() => {
+  // Close the settings when the row starts working. Done while rendering, when
+  // `busy` changes, rather than in an effect that would render twice.
+  const [wasBusy, setWasBusy] = useState(busy);
+  if (busy !== wasBusy) {
+    setWasBusy(busy);
     if (busy) setAdjusting(false);
-  }, [busy]);
+  }
 
   const renderStatus = () => {
     switch (file.status) {
