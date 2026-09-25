@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { FileItem, ProcessingOption, Tier, VideoCodec, VideoResolution } from '../../types';
 import { formatsFor, KEEP_ORIGINAL } from '../../formats';
 import { canUseHevc, imageQualityFor, isOffice, sameRequest } from '../../processing';
@@ -112,8 +112,13 @@ const Segmented = <T extends string>({
 const AdjustPanel: React.FC<AdjustPanelProps> = ({ file, onApply, onClose, holding }) => {
   const [draft, setDraft] = useState<ProcessingOption>(file.options);
   // A held panel stays open, so follow the toolbar's "all files" tier rather
-  // than quietly starting with what was set before it changed.
-  useEffect(() => setDraft(file.options), [file.options]);
+  // than quietly starting with what was set before it changed. Adjusted while
+  // rendering when the options change, rather than in an effect.
+  const [followed, setFollowed] = useState(file.options);
+  if (file.options !== followed) {
+    setFollowed(file.options);
+    setDraft(file.options);
+  }
   const patch = (p: Partial<ProcessingOption>) => setDraft((d) => ({ ...d, ...p }));
 
   const office = isOffice(file.type);
