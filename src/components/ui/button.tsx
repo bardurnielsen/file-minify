@@ -4,7 +4,7 @@ import { cn } from '../../lib/format';
 type Variant = 'primary' | 'secondary' | 'ghost';
 type Size = 'sm' | 'md' | 'lg' | 'icon';
 
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps extends React.ComponentProps<'button'> {
   variant?: Variant;
   size?: Size;
 }
@@ -25,10 +25,9 @@ const SIZE: Record<Size, string> = {
   icon: 'h-8 w-8 rounded-lg',
 };
 
-export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ variant = 'secondary', size = 'md', className, type = 'button', ...props }, ref) => (
+export function Button({ variant = 'secondary', size = 'md', className, type = 'button', ...props }: ButtonProps) {
+  return (
     <button
-      ref={ref}
       type={type}
       className={cn(
         'inline-flex items-center justify-center font-medium whitespace-nowrap transition-colors focus-ring disabled:opacity-50 disabled:pointer-events-none',
@@ -38,6 +37,5 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       )}
       {...props}
     />
-  )
-);
-Button.displayName = 'Button';
+  );
+}

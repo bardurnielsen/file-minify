@@ -5,8 +5,8 @@ Guidance for Claude Code (claude.ai/code) working in this repository.
 ## Project overview
 
 FileMinify compresses and converts files, and merges anything printable into a
-single PDF. React + TypeScript frontend, Node/Express backend shelling out to
-FFmpeg, Ghostscript, ImageMagick and LibreOffice, all in Docker behind nginx.
+single PDF. React 19 + TypeScript frontend, Node/Express backend shelling out
+to FFmpeg, Ghostscript, ImageMagick and LibreOffice, all in Docker behind nginx.
 
 This repo began as a redesign of the first FileMinify, which is now retired
 (its repository was deleted on 2026-09-23). History up to `f4d6b79` is that
@@ -44,6 +44,9 @@ Compiler rules: render must be pure (no `Date.now()` or other impure calls while
 rendering) and state isn't set straight inside an effect. To follow a prop, keep
 its previous value in state and adjust during render (see `FileRow`'s `wasBusy`
 and `AdjustPanel`'s `followed`); errors fail the build.
+
+On React 19 a component takes `ref` as an ordinary prop (see `ui/button.tsx`,
+which Radix's `asChild` passes a ref through); don't reach for `forwardRef`.
 
 ## Architecture
 
