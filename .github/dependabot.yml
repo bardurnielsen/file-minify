@@ -18,15 +18,6 @@ updates:
       # Tailwind 4 replaces tailwind.config.js with CSS-first config.
       - dependency-name: tailwindcss
         update-types: ["version-update:semver-major"]
-      # React 19 (#24): the grouped bump failed the build and the browser suite.
-      - dependency-name: react
-        update-types: ["version-update:semver-major"]
-      - dependency-name: react-dom
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@types/react"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@types/react-dom"
-        update-types: ["version-update:semver-major"]
   # The browser tests' runner; run.sh picks the Playwright image matching
   # this version, so a bump here updates the browsers too.
   - package-ecosystem: npm
