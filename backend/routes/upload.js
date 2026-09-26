@@ -94,21 +94,34 @@ const upload = multer({
   }
 }).array('files', MAX_FILES);
 
+// Multer stops at the first error (too large, wrong type) with the rest of
+// the body still arriving. Answering then and closing with unread data resets
+// the connection, and on Windows the client gets the reset instead of the
+// 400. In Docker nginx has taken the whole body first, so this only shows
+// natively. So the answer waits for the body to finish, up to what a valid
+// upload could be; a client that keeps sending beyond that is cut off.
+const DRAIN_LIMIT = MAX_FILE_BYTES * MAX_FILES + 10 * 1024 * 1024;
+const rejectAfterBody = (req, res, error) => {
+  const reply = () => res.status(400).json({ success: false, error });
+  if (req.complete) return reply();
+  let seen = 0;
+  req.on('data', (chunk) => {
+    seen += chunk.length;
+    if (seen > DRAIN_LIMIT) req.destroy();
+  });
+  req.on('end', reply);
+  req.resume();
+};
+
 // Handle file upload endpoint
 router.post('/', (req, res) => {
   upload(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       // Multer-specific errors
-      return res.status(400).json({
-        success: false,
-        error: err.message || 'File upload error'
-      });
+      return rejectAfterBody(req, res, err.message || 'File upload error');
     } else if (err) {
       // Other errors
-      return res.status(400).json({
-        success: false,
-        error: err.message || 'Unknown error during upload'
-      });
+      return rejectAfterBody(req, res, err.message || 'Unknown error during upload');
     }
 
     // Check if files exist
