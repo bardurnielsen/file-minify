@@ -29,7 +29,7 @@ e2e/.media/
 e2e/test-results/
 e2e/playwright-report/
 
-# Windows installer build (windows/build.sh)
+# Desktop app build output and staging (desktop/build.sh)
 /build/
 
 # Desktop app build (desktop/build.sh)

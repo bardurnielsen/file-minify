@@ -2,12 +2,22 @@
 # Builds the Windows desktop app (Electron) and its installer. Runs on Windows
 # in Git Bash, as the CI runner does, with Node 24 and 7-Zip:
 #   desktop/build.sh 2.0.0    -> build/desktop/FileMinify-Setup-2.0.0.exe (+ latest.yml, .blockmap)
+#   desktop/build.sh 2.0.0 --next 2.0.1
+#                             -> the same, plus build/desktop-next/ built at 2.0.1
+#                                from the same staged files: an update feed for
+#                                CI's update test (served over http, FM_UPDATE_FEED)
 # The backend and the built app go in as plain files beside the app
 # (extraResources), not into the asar: the backend's node_modules, sharp's
 # Windows binary included, are installed here exactly as for 1.0.x.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VERSION="${1:?usage: desktop/build.sh <version>}"
+USAGE="usage: desktop/build.sh <version> [--next <version>]"
+VERSION="${1:?$USAGE}"
+NEXT=""
+if [ $# -gt 1 ]; then
+  [ "$2" = "--next" ] && [ -n "${3:-}" ] && [ $# -eq 3 ] || { echo "$USAGE"; exit 1; }
+  NEXT="$3"
+fi
 # Ghostscript is bundled because winget has no package for it (its installer
 # is interactive-only, microsoft/winget-pkgs#267547). A release tag of
 # github.com/ArtifexSoftware/ghostpdl-downloads, with its checksum pinned here
@@ -16,7 +26,7 @@ VERSION="${1:?usage: desktop/build.sh <version>}"
 GS_TAG=gs10080
 GS_SHA512=cb3ecc798508851ba28b05e3fb914ddefe78168190726376d8581546ce61d5b216ffa3359e6f829072786bc12350501c7b6f99110d578696b87213d157774269
 STAGE=build/stage
-rm -rf "$STAGE" build/desktop
+rm -rf "$STAGE" build/desktop build/desktop-next
 mkdir -p "$STAGE/backend" "$STAGE/tools"
 
 # The app: the same build as the frontend image (tsc, eslint, vite -> dist/).
@@ -54,4 +64,10 @@ rm -rf "$STAGE/gs-unpacked" "$STAGE/$gs_exe"
 cd desktop
 npm ci --no-audit --no-fund
 npx electron-builder --win nsis --x64 --publish never -c.extraMetadata.version="$VERSION"
-ls -l ../build/desktop/FileMinify-Setup-*.exe ../build/desktop/latest.yml
+ls -l ../build/desktop/FileMinify-Setup-*.exe ../build/desktop/FileMinify-Setup-*.exe.blockmap ../build/desktop/latest.yml
+
+if [ -n "$NEXT" ]; then
+  npx electron-builder --win nsis --x64 --publish never -c.extraMetadata.version="$NEXT" \
+    -c.directories.output=../build/desktop-next
+  ls -l ../build/desktop-next/FileMinify-Setup-*.exe ../build/desktop-next/latest.yml
+fi

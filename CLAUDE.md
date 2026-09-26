@@ -84,11 +84,11 @@ which Radix's `asChild` passes a ref through); don't reach for `forwardRef`.
   (see "Desktop app"); does nothing without it.
 - `utils/paths.js` — `TEMP_DIR`, the one place uploads and results live.
 
-### Windows build (`windows/`, `packaging/winget/`)
+### Windows build (`desktop/`, `packaging/winget/`)
 
 The same backend runs natively, serving the built frontend itself (and the API
-under `/api`, as nginx would) when `FM_STATIC_DIR` is set. `windows/launcher.js`
-sets that and the other `FM_*` variables (data dir, `FM_HOST=127.0.0.1`,
+under `/api`, as nginx would) when `FM_STATIC_DIR` is set. The launcher (1.0.x's
+`windows/launcher.js`, in 2.0 the desktop app's main process) sets that and the other `FM_*` variables (data dir, `FM_HOST=127.0.0.1`,
 `FM_TRUST_PROXY=0`), with overrides from `%LOCALAPPDATA%\FileMinify\settings.env`.
 **Phone access** (listening beyond `127.0.0.1`) is switched from the Start-menu
 entry "FileMinify phone access" (`launcher.js --phone-access`: it asks, saves
@@ -105,11 +105,11 @@ The launcher opens the app in Edge's app mode with a profile of its own
 window closed, and that stops FileMinify. With LAN access on it doesn't:
 phones may still be using it, so the minimised console window is the off
 switch.
-Setup run by hand (a downloaded .exe) offers a "tools" task, shown only when
-one is missing, that installs FFmpeg, ImageMagick, LibreOffice and the VC++
-runtime through winget in a visible window (`InstallMissingTools` in the .iss).
-It never runs in a silent install: that is winget itself (tools already
-there) or CI.
+In 1.0.x, setup run by hand (a downloaded .exe) offered a "tools" task, shown
+only when one was missing, that installed FFmpeg, ImageMagick, LibreOffice and
+the VC++ runtime through winget in a visible window (Inno's
+`InstallMissingTools`). 2.0's oneClick installer asks nothing; the app offers
+the tools on its first start instead.
 In 1.0.x, `routes/native.js` (`/native/update`, `/native/tools`) checked for
 and started an update and ran winget, answering only the PC itself. 2.0
 removed it along with `utils/update.js`: no HTTP endpoint starts a program.
@@ -124,8 +124,10 @@ such as the one setup leaves behind during an update. The log also goes to
 `%LOCALAPPDATA%\FileMinify\logs`; the Start menu has an entry for that folder.
 The UI now reaches these through the 2.0 bridge instead, and
 `e2e/tests/native.spec.ts` fakes that (see below).
-`windows/build.sh` stages node.exe, the app and Ghostscript into an Inno Setup
-installer (`windows/fileminify.iss`, per-user). The winget manifest pulls in
+`desktop/build.sh` stages the backend (with its own production node_modules),
+the built app and Ghostscript, and electron-builder makes the per-user NSIS
+installer (`desktop/electron-builder.yml`, with `desktop/build/installer.nsh`;
+see "Desktop app"). The winget manifest pulls in
 FFmpeg, ImageMagick, LibreOffice and the VC++ runtime. Ghostscript is bundled
 because winget has none (its installer is interactive-only). Without any
 `FM_*` variable set, nothing about the Docker setup changes.
@@ -138,7 +140,7 @@ What nginx did and native mode now does itself:
   because a phone's upload now streams straight into Node.
 - **`X-Frame-Options: DENY`** and nginx's CSP.
 
-### Desktop app (2.0, in progress: `desktop/`, replaces `windows/`)
+### Desktop app (2.0, in progress: `desktop/`, replaced 1.0.x's `windows/`)
 
 Electron 44.4.5 (Node 24), electron-builder 26.16.1, electron-updater 6.8.9,
 pinned exactly. This is the contract the pieces are built against:
@@ -235,6 +237,21 @@ pinned exactly. This is the contract the pieces are built against:
     itself, and starts the new one.
   - The installer's `customInit` removes a 1.0.x install *without* running
     Inno's uninstaller, which would delete settings.env.
+- **Installer** (`desktop/build/installer.nsh`, electron-builder's NSIS
+  macros).
+  - `customInit`, before anything is extracted, finds 1.0.x by its Inno
+    uninstall key (`{A714B514-…}_is1`) or its files. It stops the old
+    `node.exe` (by exact path) and its Edge window, deletes 1.0.x's files by
+    name, its shortcuts, the Edge profile (`FileMinify\window`) and, last,
+    the key. settings.env, logs and temp stay. Every step can run again: a
+    file still locked keeps the key, and the next install finishes the job.
+    It also moves its working directory out of the old folder, which 1.0.3's
+    updater starts setup in. It must never ask anything (a MessageBox needs
+    `/SD`): winget and CI run it with `/S`, 1.0.3's updater with no arguments.
+  - `customInstall` grants "ALL APPLICATION PACKAGES" read access to the
+    install folder (the per-user GPU start-up failure).
+  - `customUnInstall` removes `%LOCALAPPDATA%\FileMinify` and the updater's
+    cache, except during an update (`--updated`).
 
 ## Invariants — these are fixed bugs, do not regress them
 
@@ -290,7 +307,7 @@ pinned exactly. This is the contract the pieces are built against:
     declared PNG that is really SVG was rendered, and SVG can read local files.
     In Docker only a missing SVG delegate stopped it; ImageMagick 7 on Windows
     renders SVG itself. Verified by giving a container `rsvg-convert`: the old
-    call made a PDF, the pinned one refuses. `windows/magick/policy.xml` is
+    call made a PDF, the pinned one refuses. `desktop/magick/policy.xml` is
     the second lock. Smoke: "svg disguised as png".
 
 ## Behaviour worth knowing
@@ -412,12 +429,34 @@ Two suites, both against a running stack and both in CI (jobs `backend` and
   README can't carry CSS: the shadow lifts it off GitHub's white page, the
   hairline edges it on the dark one. Re-run it after a visible UI change; don't edit the PNGs.
 
-A separate workflow, `windows.yml` (not a required check), runs on a Windows
-runner when the backend, app or `windows/` change. It builds the installer,
-installs it silently, runs the smoke suite against the installed app at
-`:3051/api`, and uninstalls it. The installer is kept as a run artifact to try
-on a real PC. On a `v*` tag it is attached to the release, and the job prints
-the SHA-256 for the winget manifest. The native mode can be exercised on Linux
+A separate workflow, `windows.yml` (not a required check), runs on Windows
+runners when the backend, app or `desktop/` change:
+- `build`: `desktop/build.sh <version> --next <version+1>`, the installer plus
+  a second build one patch up (`build/desktop-next`) that serves as the
+  update feed. Both are kept as run artifacts; the first is what to try on a
+  real PC.
+- `installed`: installs it silently, starts it with stale `FM_VERSION` and
+  `MAGICK_CONFIGURE_PATH` (which it must ignore) and a DevTools port, runs
+  the smoke suite at `:3051/api`, checks `/native/*` is gone and the version
+  and ImageMagick policy, takes a screenshot, then runs the desktop suite
+  (`e2e/desktop/`, `e2e/desktop.config.ts`: Playwright over CDP, in file
+  order). That checks the bridge's keys against `DESKTOP_BRIDGE_KEYS`, a
+  download to Downloads, phone access on and off, a second start, the update
+  to desktop-next through the Update button (`FM_UPDATE_FEED` to a local
+  `python -m http.server`), and that closing the window stops everything.
+  Then it uninstalls and checks nothing is left.
+- `migration`, twice: installs the real 1.0.3 (hash-checked), seeds
+  settings.env, logs and an Edge profile, starts the old app and an Edge,
+  then runs the new installer silently (`/S`), or as 1.0.3's updater does
+  (no arguments, from the old folder, with its stale environment). The old
+  processes, folder, key and shortcuts must be gone, settings.env
+  byte-identical, and in the updater case the new app running with phone
+  access still on.
+- `release`, on a `v*` tag: checks latest.yml against the exe, then one
+  `gh release create` with the exe, its blockmap and latest.yml, never a
+  draft; a tag with a `-` is a prerelease. It then checks `releases/latest`
+  still meets the 1.0.3 rules above, and prints the SHA-256 for the winget
+  manifest. The native mode can be exercised on Linux
 too: run the backend image with `FM_STATIC_DIR` pointing at a built `dist/`,
 then run smoke and `e2e/run.sh` against it.
 
