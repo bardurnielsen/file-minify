@@ -111,13 +111,15 @@ jobs:
       - name: Native endpoints stay the PC's own
         run: |
           code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
-          curl -fsS http://localhost:3051/api/native/update | tee /dev/stderr | grep -q '"available":'
+          update=$(curl -fsS http://localhost:3051/api/native/update); echo "$update"
+          grep -q '"available":' <<<"$update"
           [ "$(code -X POST -H 'X-FileMinify: 1' -H 'Origin: http://evil.example' http://localhost:3051/api/native/update)" = 403 ]
           [ "$(code -X POST -H 'X-FileMinify: 1' -H 'Host: evil.example:3051' http://localhost:3051/api/native/tools)" = 403 ]
           [ "$(code -X POST -H 'X-FileMinify: 1' -H "Host: $(hostname):3051" http://localhost:3051/api/native/tools)" = 404 ]
           [ "$(code -X POST http://localhost:3051/api/native/tools)" = 404 ]
           # The version is the installed one (version.txt), never an inherited FM_VERSION.
-          curl -fsS http://localhost:3051/api/config | tee /dev/stderr | grep -qF "\"version\":\"$BUILT_VERSION\""
+          config=$(curl -fsS http://localhost:3051/api/config); echo "$config"
+          grep -qF "\"version\":\"$BUILT_VERSION\"" <<<"$config"
 
       # The second lock behind the pinned decoders: the policy the launcher
       # points ImageMagick at must actually be in force.
