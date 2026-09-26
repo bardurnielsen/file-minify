@@ -43,15 +43,17 @@ Type: filesandordirs; Name: "{app}\tools"
 Source: "..\build\windows\app\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\FileMinify"; Filename: "{app}\node.exe"; Parameters: """{app}\launcher.js"""; WorkingDir: "{app}"; IconFilename: "{app}\fileminify.ico"; Comment: "Compress, convert and merge files"
-Name: "{autodesktop}\FileMinify"; Filename: "{app}\node.exe"; Parameters: """{app}\launcher.js"""; WorkingDir: "{app}"; IconFilename: "{app}\fileminify.ico"; Comment: "Compress, convert and merge files"; Tasks: desktopicon
+Name: "{autoprograms}\FileMinify"; Filename: "{app}\node.exe"; Parameters: """{app}\launcher.js"""; WorkingDir: "{app}"; IconFilename: "{app}\fileminify.ico"; Comment: "Compress, convert and merge files"; Flags: runminimized
+Name: "{autodesktop}\FileMinify"; Filename: "{app}\node.exe"; Parameters: """{app}\launcher.js"""; WorkingDir: "{app}"; IconFilename: "{app}\fileminify.ico"; Comment: "Compress, convert and merge files"; Flags: runminimized; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\node.exe"; Parameters: """{app}\launcher.js"""; WorkingDir: "{app}"; Description: "Start FileMinify"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\node.exe"; Parameters: """{app}\launcher.js"""; WorkingDir: "{app}"; Description: "Start FileMinify"; Flags: postinstall nowait skipifsilent runminimized
 
 [UninstallRun]
-; A running FileMinify holds node.exe open; stop it so the files can go.
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Get-Process node -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -eq '{code:NodePathForPs}' } | Stop-Process -Force"""; Flags: runhidden; RunOnceId: "StopFileMinify"
+; A running FileMinify holds node.exe open, and its window (Edge, with a
+; profile in {localappdata}\FileMinify\window) holds that profile; stop both so
+; the files can go.
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Get-Process node -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -eq '{code:NodePathForPs}' } | Stop-Process -Force; Get-CimInstance Win32_Process | Where-Object {{ $_.Name -eq 'msedge.exe' -and $_.CommandLine -like '*\FileMinify\window*' } | Invoke-CimMethod -MethodName Terminate"""; Flags: runhidden; RunOnceId: "StopFileMinify"
 
 [UninstallDelete]
 ; Temp files, the LibreOffice profile and settings.env.

@@ -1,6 +1,9 @@
 // FileMinify for Windows: starts the backend, which also serves the app, and
-// opens it in the default browser. The Start-menu shortcut runs this with the
-// bundled node.exe; closing its console window stops FileMinify.
+// opens the app in a window of its own (Edge's app mode: no address bar or
+// tabs). The Start-menu shortcut runs this with the bundled node.exe, its
+// console window minimised. Closing the app window stops FileMinify, unless
+// phones on the network may use it: then the console window is the off
+// switch, so a phone isn't cut off when the PC's window closes.
 //
 // Layout, as the installer lays it out beside this file:
 //   node.exe, launcher.js, backend\ (with node_modules), dist\ (the built app),
@@ -10,7 +13,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const http = require('http');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 
 const DATA_DIR = path.join(process.env.LOCALAPPDATA || os.homedir(), 'FileMinify');
 // KEY=VALUE lines that override the defaults below. The installer writes
@@ -71,13 +74,53 @@ const healthy = () => new Promise((resolve) => {
   req.on('timeout', () => { req.destroy(); resolve(false); });
 });
 
-// FM_NO_BROWSER: CI starts it without one.
-const openBrowser = () => process.env.FM_NO_BROWSER ||
-  execFile('cmd.exe', ['/c', 'start', '', APP_URL], { windowsHide: true }, () => {});
+const LAN = process.env.FM_HOST !== '127.0.0.1';
 
-// A console window closes the moment its process ends, taking the error with
-// it, so a failure waits for Enter.
+// Edge ships with Windows 10 and 11; where it is missing, the default browser
+// opens a tab instead.
+const findEdge = () => [process.env['ProgramFiles(x86)'], process.env.ProgramFiles, process.env.LOCALAPPDATA]
+  .filter(Boolean)
+  .map((dir) => path.join(dir, 'Microsoft', 'Edge', 'Application', 'msedge.exe'))
+  .find((exe) => fs.existsSync(exe));
+
+// The app window. A profile of its own makes it a separate Edge process, so
+// its exit means the window was closed; the user's own Edge windows play no
+// part. Returns that process, or null where a browser tab was opened instead.
+const openApp = () => {
+  if (process.env.FM_NO_BROWSER) return null; // CI
+  const edge = findEdge();
+  if (!edge) {
+    execFile('cmd.exe', ['/c', 'start', '', APP_URL], { windowsHide: true }, () => {});
+    return null;
+  }
+  return spawn(edge, [
+    `--app=${APP_URL}`,
+    `--user-data-dir=${path.join(DATA_DIR, 'window')}`,
+    '--no-first-run', '--no-default-browser-check', '--window-size=1100,860',
+  ], { stdio: 'ignore' });
+};
+
+// Stop FileMinify when its window closes. An Edge that exits within a few
+// seconds handed the window to one already running with this profile, so its
+// exit says nothing about the window; the console window stays the off switch.
+const stopWithWindow = (win) => {
+  const opened = Date.now();
+  win.on('exit', () => {
+    if (Date.now() - opened < 5000) return;
+    console.log('The FileMinify window was closed; stopping.');
+    process.exit(0);
+  });
+};
+
+// The console window starts minimised, so a failure also says so in a message
+// box; the window itself waits for Enter, since it closes (taking the error
+// with it) the moment the process ends.
 const fail = (message) => {
+  const summary = message.split('\n')[0].replace(/'/g, "''");
+  execFile('powershell.exe', ['-NoProfile', '-Command',
+    'Add-Type -AssemblyName PresentationFramework; ' +
+    `[System.Windows.MessageBox]::Show('FileMinify could not start: ${summary}', 'FileMinify')`],
+  { windowsHide: true }, () => {});
   console.error(`\nFileMinify could not start: ${message}\n\nPress Enter to close this window.`);
   process.stdin.resume();
   process.stdin.once('data', () => process.exit(1));
@@ -93,7 +136,7 @@ const main = async () => {
   // Started twice (a second click on the shortcut): the first one is serving
   // already, so just show the app again.
   if (await healthy()) {
-    openBrowser();
+    openApp();
     return;
   }
 
@@ -118,11 +161,16 @@ const main = async () => {
     if (await healthy()) {
       started = true;
       console.log(`\nFileMinify is running at ${APP_URL}`);
-      if (process.env.FM_HOST !== '127.0.0.1') {
+      const win = openApp();
+      if (LAN) {
         for (const address of lanAddresses()) console.log(`  on this network: ${address}`);
+        console.log('Phones can use it while this window is open. Close this window to stop it.\n');
+      } else if (win) {
+        stopWithWindow(win);
+        console.log('It stops when the FileMinify window is closed (or this one).\n');
+      } else {
+        console.log('Close this window to stop it.\n');
       }
-      console.log('Close this window to stop it.\n');
-      openBrowser();
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 500));

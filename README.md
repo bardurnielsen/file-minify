@@ -147,14 +147,17 @@ winget install BardurNielsen.FileMinify
 
 Winget brings FFmpeg, ImageMagick, LibreOffice and the VC++ runtime along with
 it, and asks for administrator rights for those. FileMinify itself installs
-for the current user only. Start it from the Start menu: a console window
-opens (close it to stop FileMinify) and the app opens in the browser at
-**http://localhost:3051**.
+for the current user only. Start it from the Start menu: FileMinify opens in a
+window of its own (Edge's app mode, at **http://localhost:3051**), and closing
+that window stops it. A console window sits minimised in the taskbar beside it
+with the log.
 
 - **Only this PC can reach it**, unless *Let phones and other computers on this
   network use FileMinify* is ticked in the installer. With that ticked, the
   console window lists the address to use, and Windows asks once to let it
-  through the firewall (allow *Private networks*).
+  through the firewall (allow *Private networks*). FileMinify then keeps
+  running when its window closes, so phones aren't cut off: closing the
+  console window stops it.
 - **SmartScreen may warn on first run**, because the installer isn't
   code-signed. Choose *More info* → *Run anyway*.
 - **Settings** (for example `MAX_FILE_SIZE=200MB` or `PROCESS_TIMEOUT_MIN=60`) go

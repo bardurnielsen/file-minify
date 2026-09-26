@@ -86,6 +86,11 @@ The same backend runs natively, serving the built frontend itself (and the API
 under `/api`, as nginx would) when `FM_STATIC_DIR` is set. `windows/launcher.js`
 sets that and the other `FM_*` variables (data dir, `FM_HOST=127.0.0.1`,
 `FM_TRUST_PROXY=0`), with overrides from `%LOCALAPPDATA%\FileMinify\settings.env`.
+The launcher opens the app in Edge's app mode with a profile of its own
+(`%LOCALAPPDATA%\FileMinify\window`), so the Edge process exiting means the
+window closed, and that stops FileMinify. With LAN access on it doesn't:
+phones may still be using it, so the minimised console window is the off
+switch.
 `windows/build.sh` stages node.exe, the app and Ghostscript into an Inno Setup
 installer (`windows/fileminify.iss`, per-user). The winget manifest pulls in
 FFmpeg, ImageMagick, LibreOffice and the VC++ runtime. Ghostscript is bundled
