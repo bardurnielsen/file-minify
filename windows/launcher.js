@@ -5,6 +5,11 @@
 // phones on the network may use it: then the console window is the off
 // switch, so a phone isn't cut off when the PC's window closes.
 //
+// With --phone-access (the Start-menu entry "FileMinify phone access") it
+// first asks whether to switch phone access on or off, saves that in
+// settings.env, restarts FileMinify, and on switching on opens the app's
+// "Use on your phone" panel with the code to scan.
+//
 // Layout, as the installer lays it out beside this file:
 //   node.exe, launcher.js, backend\ (with node_modules), dist\ (the built app),
 //   tools\gs\ (Ghostscript), magick\policy.xml
@@ -74,7 +79,19 @@ const healthy = () => new Promise((resolve) => {
   req.on('timeout', () => { req.destroy(); resolve(false); });
 });
 
-const LAN = process.env.FM_HOST !== '127.0.0.1';
+const lan = () => process.env.FM_HOST !== '127.0.0.1';
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// A Windows message box, through PowerShell. The text travels in the
+// environment, so quotes in it need no escaping. Resolves to the button
+// pressed ('OK', 'Yes', 'No'), or null if it couldn't be shown.
+const messageBox = (text, buttons = 'OK', icon = 'Information') => new Promise((resolve) => {
+  execFile('powershell.exe', ['-NoProfile', '-Command',
+    'Add-Type -AssemblyName PresentationFramework; ' +
+    `[System.Windows.MessageBox]::Show($env:FM_MESSAGE, 'FileMinify', '${buttons}', '${icon}')`],
+  { windowsHide: true, env: { ...process.env, FM_MESSAGE: text } },
+  (err, stdout) => resolve(err ? null : String(stdout).trim()));
+});
 
 // Edge ships with Windows 10 and 11; where it is missing, the default browser
 // opens a tab instead.
@@ -86,15 +103,16 @@ const findEdge = () => [process.env['ProgramFiles(x86)'], process.env.ProgramFil
 // The app window. A profile of its own makes it a separate Edge process, so
 // its exit means the window was closed; the user's own Edge windows play no
 // part. Returns that process, or null where a browser tab was opened instead.
-const openApp = () => {
+const openApp = (page = '/') => {
   if (process.env.FM_NO_BROWSER) return null; // CI
+  const url = APP_URL + page;
   const edge = findEdge();
   if (!edge) {
-    execFile('cmd.exe', ['/c', 'start', '', APP_URL], { windowsHide: true }, () => {});
+    execFile('cmd.exe', ['/c', 'start', '', url], { windowsHide: true }, () => {});
     return null;
   }
   return spawn(edge, [
-    `--app=${APP_URL}`,
+    `--app=${url}`,
     `--user-data-dir=${path.join(DATA_DIR, 'window')}`,
     '--no-first-run', '--no-default-browser-check', '--window-size=1100,860',
   ], { stdio: 'ignore' });
@@ -116,11 +134,7 @@ const stopWithWindow = (win) => {
 // box; the window itself waits for Enter, since it closes (taking the error
 // with it) the moment the process ends.
 const fail = (message) => {
-  const summary = message.split('\n')[0].replace(/'/g, "''");
-  execFile('powershell.exe', ['-NoProfile', '-Command',
-    'Add-Type -AssemblyName PresentationFramework; ' +
-    `[System.Windows.MessageBox]::Show('FileMinify could not start: ${summary}', 'FileMinify')`],
-  { windowsHide: true }, () => {});
+  messageBox(`FileMinify could not start: ${message.split('\n')[0]}`, 'OK', 'Error');
   console.error(`\nFileMinify could not start: ${message}\n\nPress Enter to close this window.`);
   process.stdin.resume();
   process.stdin.once('data', () => process.exit(1));
@@ -132,11 +146,63 @@ const lanAddresses = () =>
     .filter((a) => a && a.family === 'IPv4' && !a.internal)
     .map((a) => `http://${a.address}:${PORT}`);
 
+// Every line of settings.env but FM_HOST is the user's and is kept (the
+// installer follows the same rule).
+const saveHost = (host) => {
+  let lines = [];
+  try {
+    lines = fs.readFileSync(SETTINGS, 'utf8').split(/\r?\n/);
+  } catch {
+    // no settings yet
+  }
+  lines = lines.filter((line) => line.trim() && !line.trim().startsWith('FM_HOST='));
+  if (lines.length === 0) {
+    lines.push('# FileMinify settings, one KEY=value per line. The installer manages FM_HOST.');
+  }
+  if (host) lines.push(`FM_HOST=${host}`);
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(SETTINGS, `${lines.join('\r\n')}\r\n`);
+};
+
+// Stop a running FileMinify (its node.exe and its window) so it can start
+// again with the new setting.
+const stopRunning = async () => {
+  const node = process.execPath.replace(/'/g, "''");
+  await new Promise((resolve) => execFile('powershell.exe', ['-NoProfile', '-Command',
+    `Get-Process node -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq '${node}' -and $_.Id -ne ${process.pid} } | Stop-Process -Force; ` +
+    "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'msedge.exe' -and $_.CommandLine -like '*\\FileMinify\\window*' } | Invoke-CimMethod -MethodName Terminate | Out-Null"],
+  { windowsHide: true }, resolve));
+  for (let i = 0; i < 20 && await healthy(); i++) await sleep(500);
+};
+
+// Ask, save, stop the running copy. False when the answer was No.
+const switchPhoneAccess = async () => {
+  const on = lan();
+  const answer = await messageBox(on
+    ? 'Phones on this network can use FileMinify.\n\nTurn phone access off?'
+    : 'Let phones and other devices on the same Wi-Fi as this PC use FileMinify?\n\n' +
+      'Windows may then ask whether to let "Node.js JavaScript Runtime" through its firewall. ' +
+      'That is FileMinify: allow it on private networks.',
+  'YesNo', 'Question');
+  if (answer !== 'Yes') return false;
+  saveHost(on ? null : '0.0.0.0');
+  process.env.FM_HOST = on ? '127.0.0.1' : '0.0.0.0';
+  await stopRunning();
+  return true;
+};
+
 const main = async () => {
+  let page = '/';
+  if (process.argv.includes('--phone-access')) {
+    if (!(await switchPhoneAccess())) return;
+    // The code to scan, straight away.
+    if (lan()) page = '/?phone';
+  }
+
   // Started twice (a second click on the shortcut): the first one is serving
   // already, so just show the app again.
   if (await healthy()) {
-    openApp();
+    openApp(page);
     return;
   }
 
@@ -161,8 +227,8 @@ const main = async () => {
     if (await healthy()) {
       started = true;
       console.log(`\nFileMinify is running at ${APP_URL}`);
-      const win = openApp();
-      if (LAN) {
+      const win = openApp(page);
+      if (lan()) {
         for (const address of lanAddresses()) console.log(`  on this network: ${address}`);
         console.log('Phones can use it while this window is open. Close this window to stop it.\n');
       } else if (win) {
@@ -173,7 +239,7 @@ const main = async () => {
       }
       return;
     }
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await sleep(500);
   }
   if (!failed) fail('the server did not answer within 30 seconds.');
 };

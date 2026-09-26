@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { FileItem, MergeState, Tier } from '../types';
+import { FileItem, MergeState, PhoneAccess, Tier } from '../types';
 import { MAX_FILE_BYTES } from '../processing';
 
 const EMPTY_MERGE: MergeState = { status: 'idle', order: [], excluded: [], name: 'merged.pdf' };
@@ -13,6 +13,9 @@ interface FileStore {
   /** Per-file upload limit, as the server reports it (GET /config). */
   maxFileBytes: number;
   setMaxFileBytes: (bytes: number) => void;
+  /** The Windows build, on the PC itself (GET /config); null everywhere else. */
+  phone: PhoneAccess | null;
+  setPhone: (phone: PhoneAccess | null) => void;
   setDefaultTier: (tier: Tier) => void;
   addFiles: (newFiles: FileItem[]) => void;
   removeFile: (id: string) => void;
@@ -30,6 +33,8 @@ export const useFiles = create<FileStore>()(
       merge: EMPTY_MERGE,
       maxFileBytes: MAX_FILE_BYTES,
       setMaxFileBytes: (maxFileBytes) => set({ maxFileBytes }),
+      phone: null,
+      setPhone: (phone) => set({ phone }),
       setDefaultTier: (defaultTier) => set({ defaultTier }),
       addFiles: (newFiles) => set((state) => ({ files: [...state.files, ...newFiles] })),
       removeFile: (id) =>

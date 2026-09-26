@@ -16,9 +16,12 @@ function AppContent() {
 
 function App() {
   // The upload limit is a server setting; ask once, keep the default otherwise.
+  // The Windows build also says here whether phones may connect.
   useEffect(() => {
     void fetchConfig().then((config) => {
-      if (config) useFiles.getState().setMaxFileBytes(config.maxFileBytes);
+      if (!config) return;
+      useFiles.getState().setMaxFileBytes(config.maxFileBytes);
+      useFiles.getState().setPhone(config.phone ?? null);
     });
   }, []);
 

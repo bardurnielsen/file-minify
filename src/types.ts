@@ -18,6 +18,15 @@ export type VideoCodec = 'h264' | 'h265';
 /** Short-side cap. 1440p is the ceiling: nothing is kept at 4K. */
 export type VideoResolution = '1440' | '1080' | '720' | '480';
 
+/**
+ * The Windows build, on the PC itself: whether phones on the network may use
+ * FileMinify, and the addresses they would open (best first).
+ */
+export interface PhoneAccess {
+  enabled: boolean;
+  urls: string[];
+}
+
 export type Route = 'compression' | 'conversion';
 /** Routes that serve a download; 'merge' produces one file from many. */
 export type DownloadRoute = Route | 'merge';

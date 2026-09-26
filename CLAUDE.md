@@ -86,6 +86,16 @@ The same backend runs natively, serving the built frontend itself (and the API
 under `/api`, as nginx would) when `FM_STATIC_DIR` is set. `windows/launcher.js`
 sets that and the other `FM_*` variables (data dir, `FM_HOST=127.0.0.1`,
 `FM_TRUST_PROXY=0`), with overrides from `%LOCALAPPDATA%\FileMinify\settings.env`.
+**Phone access** (listening beyond `127.0.0.1`) is switched from the Start-menu
+entry "FileMinify phone access" (`launcher.js --phone-access`: it asks, saves
+`FM_HOST` in settings.env, restarts FileMinify and opens `/?phone`). Winget
+installs silently, so the installer's tickbox is out of reach there. In
+native mode `/config` gives the PC itself (never another machine) a `phone`
+block: `enabled`, plus the addresses from `utils/network.js` (virtual
+adapters left out, the default route's first). The header's "Use on phone"
+button and `PhoneDialog` show it as a QR code (`uqr`), asked afresh on every
+opening. `e2e/tests/phone.spec.ts` fakes that block, since Docker never
+sends it.
 The launcher opens the app in Edge's app mode with a profile of its own
 (`%LOCALAPPDATA%\FileMinify\window`), so the Edge process exiting means the
 window closed, and that stops FileMinify. With LAN access on it doesn't:

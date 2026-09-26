@@ -152,12 +152,19 @@ window of its own (Edge's app mode, at **http://localhost:3051**), and closing
 that window stops it. A console window sits minimised in the taskbar beside it
 with the log.
 
-- **Only this PC can reach it**, unless *Let phones and other computers on this
-  network use FileMinify* is ticked in the installer. With that ticked, the
-  console window lists the address to use, and Windows asks once to let it
-  through the firewall (allow *Private networks*). FileMinify then keeps
-  running when its window closes, so phones aren't cut off: closing the
-  console window stops it.
+- **Phones:** only this PC can reach FileMinify until phone access is on. To
+  turn it on, choose **FileMinify phone access** in the Start menu (or tick the
+  box in the installer, run with `winget install -i` to see it).
+  - **Getting the phone there:** press **Use on phone** in the app on the PC,
+    then scan the QR code with the phone's camera, or type the address shown.
+    It's worked out afresh each time, so it stays right if the router hands
+    out a new one.
+  - **Firewall:** Windows asks once whether to let *Node.js JavaScript
+    Runtime* (that is FileMinify) through its firewall; allow *Private
+    networks*.
+  - **Stopping:** with phone access on, FileMinify keeps running when its
+    window closes, so phones aren't cut off; closing the console window stops
+    it. The same Start-menu entry turns phone access off again.
 - **SmartScreen may warn on first run**, because the installer isn't
   code-signed. Choose *More info* → *Run anyway*.
 - **Settings** (for example `MAX_FILE_SIZE=200MB` or `PROCESS_TIMEOUT_MIN=60`) go
