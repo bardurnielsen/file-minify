@@ -1,4 +1,4 @@
-const { execFile } = require('child_process');
+const { execFile, spawnSync } = require('child_process');
 const { promisify } = require('util');
 const { resolveTool } = require('./tools');
 
@@ -27,7 +27,34 @@ const RUN = {
 // rather than filtered. Validation upstream is now defence in depth.
 // `file` is a tool name (utils/tools.js finds the binary); `options` adds to
 // the shared ones, e.g. a working directory.
-const run = (file, args, options = {}) =>
-  execFilePromise(resolveTool(file), args, { ...RUN, ...options });
+//
+// Each child is remembered while it runs, so that killAll() can stop them when
+// the desktop app quits (utils/desktop.js): a long FFmpeg encode would
+// otherwise carry on after the window has gone, holding its files open.
+const running = new Set();
 
-module.exports = { run };
+const run = (file, args, options = {}) => {
+  const promise = execFilePromise(resolveTool(file), args, { ...RUN, ...options });
+  const { child } = promise;
+  running.add(child);
+  const forget = () => running.delete(child);
+  child.once('exit', forget);
+  child.once('error', forget);
+  return promise;
+};
+
+// On Windows kill() ends only the process itself, and soffice.com leaves its
+// soffice.bin running (holding LibreOffice's profile lock), so the whole tree
+// goes, through taskkill.
+const killAll = () => {
+  for (const child of running) {
+    if (process.platform === 'win32' && child.pid) {
+      spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'],
+        { stdio: 'ignore', windowsHide: true, timeout: 5000 });
+    }
+    child.kill('SIGKILL');
+  }
+  running.clear();
+};
+
+module.exports = { run, killAll };
