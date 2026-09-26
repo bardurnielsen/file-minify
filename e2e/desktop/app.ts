@@ -52,6 +52,9 @@ export const portFree = () =>
   });
 
 /** The app's window: the one page loaded from its own server. */
+// Every character a regular expression treats specially, not just the dots.
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const appPage = async (browser: Browser): Promise<Page> => {
   let page: Page | undefined;
   await expect
@@ -62,7 +65,7 @@ const appPage = async (browser: Browser): Promise<Page> => {
       },
       { message: 'the app window loads the app', timeout: 60_000 }
     )
-    .toMatch(new RegExp(`^${APP_URL.replace(/\./g, '\\.')}/`));
+    .toMatch(new RegExp(`^${escapeRegExp(APP_URL)}/`));
   await expect(page!.getByRole('heading', { name: /Smaller files/ })).toBeVisible();
   return page!;
 };
