@@ -3,6 +3,7 @@
 // (backend/utils/desktop.js; the messages are in CLAUDE.md, "Desktop app"):
 // 'listening' once it answers, 'listen-error' when it can't, and replies to
 // the requests below.
+const os = require('os');
 const path = require('path');
 const { app, dialog, utilityProcess } = require('electron');
 const { DATA_DIR, buildServerEnv } = require('./config.cjs');
@@ -86,6 +87,18 @@ const start = () => {
   });
   child = proc;
   address = null;
+  // Below-normal priority: an encode still gets the whole processor when the
+  // PC is otherwise idle, but whatever the user is doing comes first, so the
+  // PC stays responsive. The tools it starts (FFmpeg, ImageMagick,
+  // Ghostscript, LibreOffice) inherit it: on Windows a below-normal process's
+  // children start below normal too.
+  proc.once('spawn', () => {
+    try {
+      os.setPriority(proc.pid, os.constants.priority.PRIORITY_BELOW_NORMAL);
+    } catch (err) {
+      log.warn(`Could not lower the server's priority: ${err.message}`);
+    }
+  });
   pipeToLog(proc.stdout, 'server:');
   pipeToLog(proc.stderr, 'server (stderr):');
 

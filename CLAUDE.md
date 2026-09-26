@@ -226,6 +226,9 @@ pinned exactly. This is the contract the pieces are built against:
     or tools install and points to the app's window or its tray icon.
   - `e2e/tests/desktop-fake.ts` fakes the bridge for the Docker stack;
     `DESKTOP_BRIDGE_KEYS` there is what the real preload must expose.
+- **Priority.** The server runs below normal priority, and the tools it starts
+  inherit it: an encode gets the whole processor when the PC is otherwise
+  idle, but what the user is doing comes first.
 - **Busy work and sleep.** "Busy" is the page's own work (`setBusy`) or the
   server's `busy`. While busy, Windows is kept awake
   (`powerSaveBlocker 'prevent-app-suspension'`, released 30 s after the
