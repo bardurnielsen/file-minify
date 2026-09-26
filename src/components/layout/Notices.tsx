@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { AlertTriangle, ArrowUpCircle, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useFiles } from '../../hooks/useFiles';
-import { fetchConfig, installMissingTools, startUpdate, type ToolsInstallProblem } from '../../lib/api';
+import { fetchConfig } from '../../lib/api';
+import { desktop, type ToolsInstallProblem } from '../../lib/native';
 import { remindLater, skipVersion } from '../../lib/updateNotice';
 import type { MissingTool } from '../../types';
 
@@ -24,26 +25,36 @@ const Bar: React.FC<{ tone: 'info' | 'warn'; children: React.ReactNode }> = ({ t
 const linkButton =
   'rounded underline decoration-current/40 underline-offset-2 transition-colors hover:decoration-current focus-ring';
 
-type UpdateStep = 'idle' | 'downloading' | 'started' | 'failed';
+type UpdateStep = 'idle' | 'downloading' | 'installing' | 'failed';
 
 /**
- * The Windows build, on the PC itself: a newer release is out. "Update"
- * fetches its setup and starts it (FileMinify closes while setup replaces it,
- * and setup offers to start it again); "Later" and "Skip" put the notice off
+ * The desktop app's own window: a newer release is out. "Update" downloads it,
+ * showing how far it has got, then the app quits, installs it and starts
+ * again (desktop.startUpdate()); "Later" and "Skip" put the notice off
  * (lib/updateNotice.ts), while the header keeps an "Update available" button.
  */
 export const UpdateNotice: React.FC = () => {
   const update = useFiles((s) => s.update);
   const hidden = useFiles((s) => s.updateNoticeHidden);
   const [step, setStep] = useState<UpdateStep>('idle');
+  const [percent, setPercent] = useState<number | null>(null);
   const latest = update?.available ? update.latest : undefined;
-  if (!latest || (hidden && step === 'idle')) return null;
+  if (!desktop || !latest || (hidden && step === 'idle')) return null;
+  const bridge = desktop;
 
   const run = () => {
     setStep('downloading');
-    startUpdate().then(
-      () => setStep('started'),
-      () => setStep('failed')
+    setPercent(null);
+    const stop = bridge.onUpdateProgress((p) => setPercent(Math.max(0, Math.min(100, Math.floor(p)))));
+    bridge.startUpdate().then(
+      () => {
+        stop();
+        setStep('installing');
+      },
+      () => {
+        stop();
+        setStep('failed');
+      }
     );
   };
   const putOff = (how: 'later' | 'skip') => {
@@ -58,12 +69,12 @@ export const UpdateNotice: React.FC = () => {
       {step === 'downloading' ? (
         <span className="flex items-center gap-2">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          Downloading FileMinify {latest.version}…
+          Downloading FileMinify {latest.version}…{percent !== null && ` ${percent}%`}
         </span>
-      ) : step === 'started' ? (
-        <span>
-          Setup for FileMinify {latest.version} is starting. Click through it: FileMinify closes while it updates,
-          and setup starts it again at the end.
+      ) : step === 'installing' ? (
+        <span className="flex items-center gap-2">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Installing FileMinify {latest.version}. It opens again in a moment.
         </span>
       ) : (
         <>
@@ -104,9 +115,11 @@ const INSTALLABLE: MissingTool[] = ['ffmpeg', 'imagemagick', 'libreoffice', 'vcr
 const POLL_MS = 10_000;
 
 /**
- * The Windows build, on the PC itself: tools FileMinify needs aren't there
- * (declined in setup, or uninstalled since). Says what won't work, and
- * installs them in a window of their own; the notice goes once they're found.
+ * The desktop app, on the PC itself: tools FileMinify needs aren't there
+ * (declined on first start, or uninstalled since). Says what won't work and,
+ * in the app's own window, installs them in a window of their own
+ * (desktop.installTools()); the notice goes once they're found. A browser tab
+ * on the same PC has no bridge, so there it only says where to go.
  */
 export const ToolsNotice: React.FC = () => {
   const missing = useFiles((s) => s.missingTools);
@@ -133,10 +146,15 @@ export const ToolsNotice: React.FC = () => {
   const canInstall = missing.some((t) => INSTALLABLE.includes(t));
 
   const install = () => {
+    if (!desktop) return;
     setProblem(null);
-    installMissingTools().then(
-      () => setInstalling(true),
-      (why: ToolsInstallProblem) => (why === 'running' ? setInstalling(true) : setProblem(why))
+    desktop.installTools().then(
+      (result) => {
+        // 'running': an install is already going; wait for it like our own.
+        if (result.ok || result.problem === 'running') setInstalling(true);
+        else setProblem(result.problem);
+      },
+      () => setProblem('failed')
     );
   };
 
@@ -165,10 +183,19 @@ export const ToolsNotice: React.FC = () => {
           </p>
         )}
         {problem === 'failed' && (
-          <p className="mt-1">The install could not be started. Run FileMinify’s setup again instead.</p>
+          <p className="mt-1">
+            The install could not be started. Try again in a moment; the{' '}
+            <button type="button" className={linkButton} onClick={() => void desktop?.openLogFolder()}>
+              log
+            </button>{' '}
+            may say why.
+          </p>
+        )}
+        {canInstall && !desktop && (
+          <p className="mt-1">Open FileMinify’s own window to install {missing.length === 1 ? 'it' : 'them'}.</p>
         )}
       </div>
-      {canInstall && !installing && (
+      {canInstall && desktop && !installing && (
         <Button variant="primary" size="sm" onClick={install}>
           Install {missing.length === 1 ? 'it' : 'them'}
         </Button>

@@ -4,7 +4,7 @@ import { useFiles } from '../../hooks/useFiles';
 const AUTHOR_URL = 'https://github.com/bardurnielsen';
 
 const Footer: React.FC = () => {
-  // Only the Windows build reports a version, and there the files never leave
+  // Only the desktop app reports a version, and there the files never leave
   // the PC.
   const version = useFiles((s) => s.version);
 

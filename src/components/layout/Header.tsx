@@ -29,7 +29,7 @@ const useResolvedTheme = () => {
   return theme === 'system' ? system : theme;
 };
 
-// The Windows launcher opens /?phone after phone access is switched on, so the
+// The desktop app reloads with /?phone after phone access is switched on, so the
 // code to scan is the first thing on screen.
 const PHONE_PARAM = 'phone';
 
