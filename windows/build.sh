@@ -6,12 +6,17 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 VERSION="${1:?usage: windows/build.sh <version>}"
-# The runtime shipped inside. Keep it on the LTS line the Docker image uses.
+# What is downloaded and shipped inside, with checksums pinned here: taken on
+# a bump from nodejs.org's SHASUMS256.txt and Artifex's SHA512SUMS, so a
+# tampered download can't bring its own matching checksum.
+# The runtime. Keep it on the LTS line the Docker image uses.
 NODE_VERSION=v22.23.3
+NODE_SHA256=2b0ff57b049cda1bbcea2240eec20467018713c1efe1f7360c2681859b90ed71
 # Ghostscript is bundled because winget has no package for it (its installer
 # is interactive-only, microsoft/winget-pkgs#267547). A release tag of
 # github.com/ArtifexSoftware/ghostpdl-downloads.
 GS_TAG=gs10080
+GS_SHA512=cb3ecc798508851ba28b05e3fb914ddefe78168190726376d8581546ce61d5b216ffa3359e6f829072786bc12350501c7b6f99110d578696b87213d157774269
 OUT=build/windows
 APP=$OUT/app
 rm -rf "$OUT"
@@ -28,11 +33,10 @@ cp -r backend/server.js backend/package.json backend/package-lock.json \
       backend/routes backend/utils backend/middleware "$APP/backend/"
 (cd "$APP/backend" && npm ci --omit=dev --no-audit --no-fund)
 
-# Node itself, checked against nodejs.org's published checksums.
+# Node itself.
 zip=node-$NODE_VERSION-win-x64.zip
 curl -fsSLo "$OUT/$zip" "https://nodejs.org/dist/$NODE_VERSION/$zip"
-curl -fsSLo "$OUT/SHASUMS256.txt" "https://nodejs.org/dist/$NODE_VERSION/SHASUMS256.txt"
-(cd "$OUT" && grep " $zip\$" SHASUMS256.txt | sha256sum -c -)
+echo "$NODE_SHA256  $OUT/$zip" | sha256sum -c -
 # Windows' own tar (bsdtar) reads zip files; Git Bash's GNU tar does not.
 "$(cygpath "$SYSTEMROOT")/System32/tar.exe" -xf "$OUT/$zip" -C "$OUT"
 cp "$OUT/node-$NODE_VERSION-win-x64/node.exe" "$APP/"
@@ -43,8 +47,7 @@ cp "$OUT/node-$NODE_VERSION-win-x64/LICENSE" "$APP/node-LICENSE.txt"
 # run time besides these is the VC++ runtime, a winget dependency.
 gs_exe=${GS_TAG}w64.exe
 curl -fsSLo "$OUT/$gs_exe" "https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/$GS_TAG/$gs_exe"
-curl -fsSLo "$OUT/SHA512SUMS" "https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/$GS_TAG/SHA512SUMS"
-(cd "$OUT" && grep " $gs_exe\$" SHA512SUMS | sha512sum -c -)
+echo "$GS_SHA512  $OUT/$gs_exe" | sha512sum -c -
 7z x -y -bso0 -o"$OUT/gs" "$OUT/$gs_exe"
 mkdir -p "$APP/tools/gs"
 cp -r "$OUT/gs/bin" "$OUT/gs/lib" "$OUT/gs/Resource" "$OUT/gs/iccprofiles" "$APP/tools/gs/"
@@ -58,6 +61,7 @@ https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/tag/$GS_TAG
 SRC
 
 cp windows/launcher.js "$APP/"
+cp -r windows/magick "$APP/magick"
 cp public/favicon.ico "$APP/fileminify.ico"
 cp LICENSE "$APP/LICENSE.txt"
 

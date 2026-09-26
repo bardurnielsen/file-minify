@@ -92,6 +92,14 @@ FFmpeg, ImageMagick, LibreOffice and the VC++ runtime. Ghostscript is bundled
 because winget has none (its installer is interactive-only). Without any
 `FM_*` variable set, nothing about the Docker setup changes.
 
+What nginx did and native mode now does itself:
+- **Host check against DNS rebinding.** Only `localhost`, the PC's own name
+  and plain IP addresses are answered, since Origin == Host alone passes a
+  rebound name.
+- **Upload timeout.** Node's `requestTimeout` is raised to the job timeout,
+  because a phone's upload now streams straight into Node.
+- **`X-Frame-Options: DENY`** and nginx's CSP.
+
 ## Invariants — these are fixed bugs, do not regress them
 
 1. **`formats.ts` is the source of truth.** Never offer a file its own format, or
@@ -141,6 +149,13 @@ because winget has none (its installer is interactive-only). Without any
     `FM_TRUST_PROXY=0`. Trusting `X-Forwarded-For` there reopens invariant 6's
     rate-limiter bypass. Verified: with 0, rotating the header still counts
     down.
+13. **ImageMagick is told the decoder** (`magickInput`: `png:<file>`), never
+    left to guess. It sniffs a file's bytes over its name, so an upload
+    declared PNG that is really SVG was rendered, and SVG can read local files.
+    In Docker only a missing SVG delegate stopped it; ImageMagick 7 on Windows
+    renders SVG itself. Verified by giving a container `rsvg-convert`: the old
+    call made a PDF, the pinned one refuses. `windows/magick/policy.xml` is
+    the second lock. Smoke: "svg disguised as png".
 
 ## Behaviour worth knowing
 

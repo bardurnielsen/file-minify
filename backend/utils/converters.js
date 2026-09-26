@@ -54,6 +54,22 @@ const convertOfficeToPDF = (filePath, outDir = path.dirname(filePath)) =>
     }
   });
 
+// ImageMagick picks its decoder from a file's first bytes when it recognises
+// them, whatever the name says: an upload declared image/png that is really SVG
+// gets rendered, and SVG can pull local files in (`text:`, `file:`). In Docker
+// only the missing SVG delegate stopped that; ImageMagick 7 on Windows renders
+// SVG itself, with the user's rights. The stored extension comes from the MIME
+// allowlist, so naming the decoder from it (`png:<file>`) leaves nothing to
+// sniff.
+const MAGICK_DECODERS = {
+  '.jpg': 'jpeg', '.jpeg': 'jpeg', '.png': 'png', '.gif': 'gif', '.webp': 'webp', '.pdf': 'pdf',
+};
+const magickInput = (filePath, frame = '') => {
+  const decoder = MAGICK_DECODERS[path.extname(filePath).toLowerCase()];
+  if (!decoder) throw new Error(`No ImageMagick decoder for ${path.basename(filePath)}`);
+  return `${decoder}:${filePath}${frame}`;
+};
+
 // Convert an image to PDF with ImageMagick, which also overwrites silently.
 // firstFrameOnly stops an animated GIF becoming one page per frame.
 const convertImageToPDF = async (
@@ -62,7 +78,7 @@ const convertImageToPDF = async (
 ) => {
   const outputPath = path.join(outDir, `${path.basename(filePath, path.extname(filePath))}.pdf`);
   try {
-    const input = firstFrameOnly ? `${filePath}[0]` : filePath;
+    const input = magickInput(filePath, firstFrameOnly ? '[0]' : '');
     // -auto-orient: a phone photo is stored sideways with an EXIF Orientation
     // tag, which a PDF page does not carry, so turn the pixels upright first.
     await run('convert', [input, '-auto-orient', outputPath]);
@@ -169,6 +185,7 @@ module.exports = {
   PDF_SOURCE_EXTS,
   convertOfficeToPDF,
   convertImageToPDF,
+  magickInput,
   compressPDF,
   needsPassword,
   PASSWORD_PROTECTED,

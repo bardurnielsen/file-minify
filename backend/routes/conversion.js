@@ -9,6 +9,7 @@ const logger = require('../utils/logger');
 const {
   convertOfficeToPDF,
   convertImageToPDF,
+  magickInput,
   compressPDF,
   needsPassword,
   PASSWORD_PROTECTED,
@@ -90,7 +91,7 @@ const convertPDFToImage = async (filePath, format) => {
   
   try {
     // Use ImageMagick to convert PDF to image (first page only)
-    await run('convert', [`${filePath}[0]`, outputPath]);
+    await run('convert', [magickInput(filePath, '[0]'), outputPath]);
     
     // Check if the output file exists
     if (!fs.existsSync(outputPath)) {

@@ -4,7 +4,7 @@
 //
 // Layout, as the installer lays it out beside this file:
 //   node.exe, launcher.js, backend\ (with node_modules), dist\ (the built app),
-//   tools\gs\ (Ghostscript)
+//   tools\gs\ (Ghostscript), magick\policy.xml
 // Everything written at run time goes to %LOCALAPPDATA%\FileMinify.
 const fs = require('fs');
 const os = require('os');
@@ -55,8 +55,12 @@ if (fs.existsSync(path.join(GS_BIN, 'gswin64c.exe'))) {
   process.env.MAGICK_GHOSTSCRIPT_PATH ||= GS_BIN;
 }
 
+// ImageMagick reads windows\magick\policy.xml as well as its own: no SVG, MVG,
+// text or URL decoders, whatever a file's bytes claim.
+process.env.MAGICK_CONFIGURE_PATH ||= path.join(__dirname, 'magick');
+
 const PORT = Number(process.env.PORT);
-const URL = `http://localhost:${PORT}`;
+const APP_URL = `http://localhost:${PORT}`;
 
 const healthy = () => new Promise((resolve) => {
   const req = http.get(`http://127.0.0.1:${PORT}/health`, { timeout: 1000 }, (res) => {
@@ -69,7 +73,7 @@ const healthy = () => new Promise((resolve) => {
 
 // FM_NO_BROWSER: CI starts it without one.
 const openBrowser = () => process.env.FM_NO_BROWSER ||
-  execFile('cmd.exe', ['/c', 'start', '', URL], { windowsHide: true }, () => {});
+  execFile('cmd.exe', ['/c', 'start', '', APP_URL], { windowsHide: true }, () => {});
 
 // A console window closes the moment its process ends, taking the error with
 // it, so a failure waits for Enter.
@@ -94,14 +98,26 @@ const main = async () => {
   }
 
   process.title = 'FileMinify - close this window to stop';
-  process.on('uncaughtException', (err) =>
-    fail(err.code === 'EADDRINUSE' ? `port ${PORT} is already used by another program.` : err.stack));
+  // Before it is up, a crash is a failed start and waits to be read. After,
+  // it ends the process like any crash would, rather than leave a server
+  // running in an unknown state.
+  let started = false;
+  let failed = false;
+  process.on('uncaughtException', (err) => {
+    if (started) {
+      console.error(err.stack);
+      process.exit(1);
+    }
+    failed = true;
+    fail(err.code === 'EADDRINUSE' ? `port ${PORT} is already used by another program.` : err.stack);
+  });
 
   require(path.join(__dirname, 'backend', 'server.js'));
 
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 60 && !failed; i++) {
     if (await healthy()) {
-      console.log(`\nFileMinify is running at ${URL}`);
+      started = true;
+      console.log(`\nFileMinify is running at ${APP_URL}`);
       if (process.env.FM_HOST !== '127.0.0.1') {
         for (const address of lanAddresses()) console.log(`  on this network: ${address}`);
       }
@@ -111,7 +127,7 @@ const main = async () => {
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  fail('the server did not answer within 30 seconds.');
+  if (!failed) fail('the server did not answer within 30 seconds.');
 };
 
 main();

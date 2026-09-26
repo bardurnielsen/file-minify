@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const compression = require('compression');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
+const os = require('os');
 const path = require('path');
 const fs = require('fs');
 
@@ -24,7 +25,7 @@ const { toolReport } = require('./utils/tools');
 
 // The Windows build has no nginx: FM_STATIC_DIR points at the built frontend
 // and this server delivers it, plus the API under /api as nginx would.
-const STATIC_DIR = process.env.FM_STATIC_DIR || null;
+const STATIC_DIR = process.env.FM_STATIC_DIR ? path.resolve(process.env.FM_STATIC_DIR) : null;
 
 // Create Express app
 const app = express();
@@ -34,6 +35,7 @@ const app = express();
 // helmet's defaults include upgrade-insecure-requests, which breaks the app on
 // plain http from a phone on the LAN.
 app.use(helmet(STATIC_DIR ? {
+  frameguard: { action: 'deny' },
   contentSecurityPolicy: {
     useDefaults: false,
     directives: {
@@ -80,7 +82,24 @@ const originAllowed = (req) => {
   }
 };
 
+// Natively, the Origin == Host check alone does not stop DNS rebinding: a page
+// on evil.example whose name is re-pointed at this PC sends a matching Origin
+// and Host. Its Host is still a name the PC doesn't go by, so natively only
+// its own names and plain IP addresses are served. (In Docker nginx answers
+// every name, and the ship's server is reached by several.)
+const hostAllowed = (req) => {
+  if (!STATIC_DIR) return true;
+  const host = (req.headers.host || '').toLowerCase().replace(/:\d+$/, '');
+  const self = os.hostname().toLowerCase();
+  return host === 'localhost' || host === self || host === `${self}.local` ||
+    /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || /^\[[0-9a-f:.]+\]$/.test(host);
+};
+
 app.use((req, res, next) => {
+  if (!hostAllowed(req)) {
+    logger.warn(`Rejected request for host ${req.headers.host}`);
+    return res.status(403).json({ success: false, error: 'Unknown host name' });
+  }
   if (originAllowed(req)) return next();
   logger.warn(`Rejected cross-origin ${req.method} ${req.path}`);
   return res.status(403).json({ success: false, error: 'Cross-origin request rejected' });
@@ -91,8 +110,9 @@ app.use((req, res, next) => {
 // buckets them all together, so one busy client locks out everyone. Natively
 // nothing is in front, so the launcher sets FM_TRUST_PROXY=0: trusting the
 // header there would let a client pick its own address (invariant 6).
-app.set('trust proxy', process.env.FM_TRUST_PROXY === undefined
-  ? 1 : Number(process.env.FM_TRUST_PROXY));
+const trustProxy = process.env.FM_TRUST_PROXY;
+app.set('trust proxy', trustProxy === undefined ? 1
+  : /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
 
 // Apply rate limiting. nginx proxies /api/* here with the prefix stripped, so
 // the paths that actually arrive are /upload, /compression, ... -- mounting this
@@ -132,11 +152,14 @@ api.use('/merge', mergeRoutes);
 
 // Health check endpoint
 // ?tools adds where each external tool was found (null: missing), which is
-// how a native install shows that one of them is not there.
+// how a native install shows that one of them is not there. Only asked from
+// this machine: the paths include the Windows user name.
+const fromThisMachine = (req) =>
+  ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
 api.get('/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
-    ...(req.query.tools !== undefined && { tools: toolReport() }),
+    ...(req.query.tools !== undefined && fromThisMachine(req) && { tools: toolReport() }),
   });
 });
 
@@ -153,6 +176,8 @@ app.use(api);
 
 if (STATIC_DIR) {
   app.use('/api', api);
+  // An unknown API path is a JSON 404, not the app's index.html.
+  app.use('/api', (req, res) => res.status(404).json({ success: false, error: 'Not found' }));
   // Vite's hashed bundles can be cached for good; everything else revalidates.
   app.use('/assets', express.static(path.join(STATIC_DIR, 'assets'), {
     maxAge: '30d', immutable: true,
@@ -169,13 +194,21 @@ const PORT = process.env.PORT || 4000;
 // FM_HOST narrows where it listens; the Windows launcher uses 127.0.0.1 unless
 // phones on the LAN were allowed in. Unset means every interface, as in Docker.
 const HOST = process.env.FM_HOST || undefined;
-app.listen(PORT, HOST, () => {
+const server = app.listen(PORT, HOST, () => {
   logger.info(`Server running on ${HOST || 'all interfaces'}, port ${PORT}`);
   for (const [name, found] of Object.entries(toolReport())) {
     if (found) logger.info(`Tool ${name}: ${found}`);
     else logger.warn(`Tool ${name}: NOT FOUND - features using it will fail`);
   }
 });
+
+// In Docker nginx takes in the whole upload before passing it on, quickly.
+// Natively a phone streams straight into Node, whose default requestTimeout
+// (5 minutes to receive a request) would cut off a large video on slow Wi-Fi.
+if (STATIC_DIR) {
+  const timeoutMin = Number(process.env.PROCESS_TIMEOUT_MIN);
+  server.requestTimeout = (timeoutMin > 0 ? timeoutMin : 5) * 60 * 1000;
+}
 
 // Clean up temp files periodically
 const cleanupInterval = 3600000; // 1 hour

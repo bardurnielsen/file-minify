@@ -1,6 +1,7 @@
 ﻿; FileMinify for Windows. windows/build.sh stages the files in build\windows\app
-; and passes /DAppVersion; winget installs FFmpeg, Ghostscript, ImageMagick and
-; LibreOffice beforehand as the package's dependencies.
+; and passes /DAppVersion. Winget installs FFmpeg, ImageMagick, LibreOffice and
+; the VC++ runtime beforehand as the package's dependencies; Ghostscript is
+; bundled (tools\gs), since winget has no package for it.
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif
@@ -36,6 +37,7 @@ Name: lan; Description: "Let phones and other computers on this network use File
 ; An upgrade replaces these whole, so nothing from an older version lingers.
 Type: filesandordirs; Name: "{app}\backend"
 Type: filesandordirs; Name: "{app}\dist"
+Type: filesandordirs; Name: "{app}\tools"
 
 [Files]
 Source: "..\build\windows\app\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -49,27 +51,45 @@ Filename: "{app}\node.exe"; Parameters: """{app}\launcher.js"""; WorkingDir: "{a
 
 [UninstallRun]
 ; A running FileMinify holds node.exe open; stop it so the files can go.
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Get-Process node -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -eq '{app}\node.exe' } | Stop-Process -Force"""; Flags: runhidden; RunOnceId: "StopFileMinify"
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Get-Process node -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -eq '{code:NodePathForPs}' } | Stop-Process -Force"""; Flags: runhidden; RunOnceId: "StopFileMinify"
 
 [UninstallDelete]
 ; Temp files, the LibreOffice profile and settings.env.
 Type: filesandordirs; Name: "{localappdata}\FileMinify"
 
 [Code]
-// settings.env is read by launcher.js. Rewritten on every install; a silent
-// upgrade (winget) reuses the previous run's task choices, so LAN access
-// survives it.
+// settings.env is read by launcher.js, and users add their own lines to it
+// (README). The installer owns only FM_HOST: every other line is kept. A
+// silent upgrade (winget) reuses the previous run's task choices, so LAN
+// access survives it too.
 procedure CurStepChanged(CurStep: TSetupStep);
 var
-  Dir, Settings: String;
+  Dir, FileName, Settings: String;
+  Lines: TArrayOfString;
+  I: Integer;
 begin
   if CurStep = ssPostInstall then
   begin
     Dir := ExpandConstant('{localappdata}\FileMinify');
     ForceDirectories(Dir);
-    Settings := '# Written by the FileMinify installer; run it again to change this.' + #13#10;
+    FileName := Dir + '\settings.env';
+    Settings := '';
+    if LoadStringsFromFile(FileName, Lines) then
+      for I := 0 to GetArrayLength(Lines) - 1 do
+        if Pos('FM_HOST=', Trim(Lines[I])) <> 1 then
+          Settings := Settings + Lines[I] + #13#10;
+    if Settings = '' then
+      Settings := '# FileMinify settings, one KEY=value per line. The installer manages FM_HOST.' + #13#10;
     if WizardIsTaskSelected('lan') then
       Settings := Settings + 'FM_HOST=0.0.0.0' + #13#10;
-    SaveStringToFile(Dir + '\settings.env', Settings, False);
+    SaveStringToFile(FileName, Settings, False);
   end;
+end;
+
+// {app}\node.exe inside a single-quoted PowerShell string: a quote in the
+// path (C:\Users\O'Brien) is doubled so it stays one string.
+function NodePathForPs(Param: String): String;
+begin
+  Result := ExpandConstant('{app}\node.exe');
+  StringChangeEx(Result, '''', '''''', True);
 end;

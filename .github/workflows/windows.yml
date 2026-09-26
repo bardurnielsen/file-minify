@@ -18,6 +18,10 @@ on:
       - 'index.html'
       - 'package*.json'
       - 'vite.config.ts'
+      - 'tsconfig*.json'
+      - 'eslint.config.js'
+      - 'postcss.config.js'
+      - 'tailwind.config.js'
       - '.github/workflows/windows.yml'
   push:
     branches: [ main ]
@@ -84,35 +88,41 @@ jobs:
           # limit keeps the smoke suite's over-the-limit upload small.
           Add-Content "$env:LOCALAPPDATA\FileMinify\settings.env" 'MAX_FILE_SIZE=50MB'
 
-      - name: Start it
-        shell: pwsh
+      # One step from start to finish: the runner may stop what a step started
+      # once that step ends.
+      - name: Start it and run the smoke suite
         run: |
-          $env:FM_NO_BROWSER = '1'
-          $app = "$env:LOCALAPPDATA\Programs\FileMinify"
-          Start-Process -FilePath "$app\node.exe" -ArgumentList "`"$app\launcher.js`"" `
-            -RedirectStandardOutput app.log -RedirectStandardError app-err.log
-
-      - name: Wait for it, with every tool found
-        run: |
+          app="$LOCALAPPDATA/Programs/FileMinify"
+          FM_NO_BROWSER=1 "$app/node.exe" "$app/launcher.js" > app.log 2>&1 &
           for i in $(seq 1 60); do
-            health=$(curl -fsS 'http://localhost:3051/api/health?tools' 2>/dev/null) && break
+            health=$(curl -fsS 'http://localhost:3051/api/health?tools' 2>curl.err) && break
             sleep 2
           done
           echo "$health"
-          [ -n "$health" ] || { echo "the app never came up"; exit 1; }
+          [ -n "$health" ] || { echo "the app never came up:"; cat curl.err; exit 1; }
           if grep -q null <<<"$health"; then echo "a tool was not found"; exit 1; fi
+          backend/test/smoke.sh http://localhost:3051/api
 
-      - name: Smoke suite
-        run: backend/test/smoke.sh http://localhost:3051/api
+      # The second lock behind the pinned decoders: the policy the launcher
+      # points ImageMagick at must actually be in force.
+      - name: ImageMagick policy is in force
+        shell: pwsh
+        run: |
+          $env:MAGICK_CONFIGURE_PATH = "$env:LOCALAPPDATA\Programs\FileMinify\magick"
+          $policy = & (Get-Item "$env:ProgramFiles\ImageMagick-*\magick.exe").FullName -list policy | Out-String
+          $policy
+          if ($policy -notmatch 'MSVG') { throw 'FileMinify policy.xml was not loaded' }
 
       - name: Logs
         if: always()
-        run: cat app.log app-err.log 2>/dev/null || true
+        run: cat app.log 2>/dev/null || true
 
       - name: Uninstall it
         shell: pwsh
         run: |
           Start-Process -Wait -FilePath "$env:LOCALAPPDATA\Programs\FileMinify\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES'
+          # The uninstaller hands over to a copy of itself in %TEMP% and exits.
+          for ($i = 0; $i -lt 60 -and (Test-Path "$env:LOCALAPPDATA\Programs\FileMinify"); $i++) { Start-Sleep 2 }
           foreach ($dir in "$env:LOCALAPPDATA\Programs\FileMinify", "$env:LOCALAPPDATA\FileMinify") {
             if (Test-Path $dir) { Get-ChildItem -Recurse $dir | Select-Object -First 20 FullName; throw "$dir survived the uninstall" }
           }

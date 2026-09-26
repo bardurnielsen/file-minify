@@ -76,9 +76,12 @@ const find = (name) => {
 const resolved = new Map();
 
 // Found once, then cached. A tool that is missing is looked up again next
-// time, so installing it while the app runs needs no restart.
+// time, so installing it while the app runs needs no restart; so is one that
+// has moved (winget upgrades FFmpeg into a new versioned folder).
 const lookup = (name) => {
-  if (resolved.has(name)) return resolved.get(name);
+  const cached = resolved.get(name);
+  if (cached && (process.platform !== 'win32' || fs.existsSync(cached))) return cached;
+  resolved.delete(name);
   const found = find(name);
   if (found) resolved.set(name, found);
   return found;
