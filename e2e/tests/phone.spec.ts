@@ -48,6 +48,8 @@ test('the phone panel shows the address to open and a code to scan', async ({ pa
   await expect(panel(page)).toContainText('also answers at http://10.0.0.5:3051');
   // The firewall prompt names the app itself now, not Node.js.
   await expect(panel(page)).toContainText('whether to let FileMinify through its firewall');
+  // A home Wi-Fi Windows classed as Public blocks phones even then.
+  await expect(panel(page)).toContainText('set it to Private');
   await expect(panel(page)).not.toContainText('Node.js');
 });
 

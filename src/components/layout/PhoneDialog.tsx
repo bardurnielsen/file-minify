@@ -197,6 +197,11 @@ const PhoneDialog: React.FC<PhoneDialogProps> = ({ open, onOpenChange }) => {
                     <strong className="text-zinc-800 dark:text-zinc-200">FileMinify</strong> through its firewall:
                     it needs <em>Private networks</em> allowed.
                   </p>
+                  <p>
+                    Still nothing? Windows may treat this Wi-Fi as a <em>Public</em> network, where that doesn’t
+                    apply: in Windows Settings → Network &amp; internet → Wi-Fi → this network, set it to{' '}
+                    <em>Private</em>.
+                  </p>
                 </div>
                 {turnOff}
               </div>
