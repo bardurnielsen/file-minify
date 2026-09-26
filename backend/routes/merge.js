@@ -9,7 +9,7 @@ const { toPdf, PDF_SOURCE_EXTS } = require('../utils/converters');
 const { isSafeId } = require('../utils/safeId');
 
 const router = express.Router();
-const TEMP_DIR = path.join(__dirname, '../temp');
+const { TEMP_DIR } = require('../utils/paths');
 const MAX_SOURCES = 20;
 
 const failWith = (message, statusCode, failedId) => {

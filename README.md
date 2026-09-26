@@ -137,6 +137,33 @@ the smoke suite and for debugging from the host — nginx reaches the backend ov
 the Compose network, so nothing else needs it, and publishing it would be a second
 front door that skips nginx and the rate limiting.
 
+### On Windows, without Docker
+
+For one PC at home there is a native Windows build, no Docker needed:
+
+```powershell
+winget install BardurNielsen.FileMinify
+```
+
+Winget brings FFmpeg, ImageMagick, LibreOffice and the VC++ runtime along with
+it, and asks for administrator rights for those. FileMinify itself installs
+for the current user only. Start it from the Start menu: a console window
+opens (close it to stop FileMinify) and the app opens in the browser at
+**http://localhost:3051**.
+
+- **Only this PC can reach it**, unless *Let phones and other computers on this
+  network use FileMinify* is ticked in the installer. With that ticked, the
+  console window lists the address to use, and Windows asks once to let it
+  through the firewall (allow *Private networks*).
+- **SmartScreen may warn on first run**, because the installer isn't
+  code-signed. Choose *More info* → *Run anyway*.
+- **Settings** (for example `MAX_FILE_SIZE=200MB` or `PROCESS_TIMEOUT_MIN=60`) go
+  in `%LOCALAPPDATA%\FileMinify\settings.env`, one `KEY=value` per line. The
+  defaults match the ship's server: 500 MB per file and 30 minutes per job.
+- The installer is also on the [Releases](https://github.com/bardurnielsen/file-minify/releases)
+  page. Installed that way, add the tools yourself:
+  `winget install Gyan.FFmpeg ImageMagick.ImageMagick TheDocumentFoundation.LibreOffice Microsoft.VCRedist.2015+.x64`.
+
 ## Development
 
 Both services build from the repo root. After editing:
@@ -253,3 +280,7 @@ own requests.
 ## Licence
 
 MIT — see [LICENSE](LICENSE).
+
+The Windows installer also carries an unmodified copy of GPL Ghostscript, which
+is AGPL v3. Its licence and a pointer to its source are installed beside it
+(`tools\gs\`).

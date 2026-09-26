@@ -1,0 +1,140 @@
+name: Windows
+
+# The native Windows build (windows/, installed with winget). This builds the
+# installer, installs it the way winget does (silently, per user), runs the API
+# smoke suite against the installed app, and uninstalls it again. On a v* tag
+# the installer is then attached to that tag's GitHub release.
+#
+# Not a required check: installing LibreOffice makes it slow, and it only runs
+# when something it builds has changed.
+on:
+  pull_request:
+    branches: [ main ]
+    paths: &paths
+      - 'backend/**'
+      - 'src/**'
+      - 'public/**'
+      - 'windows/**'
+      - 'index.html'
+      - 'package*.json'
+      - 'vite.config.ts'
+      - '.github/workflows/windows.yml'
+  push:
+    branches: [ main ]
+    # Not evaluated for tag pushes, so every v* tag builds.
+    paths: *paths
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+
+      # What winget installs as the package's dependencies, from Chocolatey
+      # because the runner has no winget. Their PATH changes don't reach later
+      # steps, which also exercises backend/utils/tools.js's folder search.
+      # Not Ghostscript: the installer bundles its own, and that is the one
+      # under test.
+      - name: Install the tools and Inno Setup
+        run: choco install -y --no-progress ffmpeg imagemagick libreoffice-fresh innosetup
+
+      - name: Build the installer
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="${GITHUB_REF_NAME#v}"; else v="0.0.${GITHUB_RUN_NUMBER}"; fi
+          windows/build.sh "$v"
+
+      # Kept even if a later step fails: it is what to try on a real PC.
+      - name: Keep the installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-installer
+          path: build/windows/FileMinify-Setup-*.exe
+          retention-days: 14
+
+      - name: Install it
+        shell: pwsh
+        run: |
+          $setup = Get-Item build\windows\FileMinify-Setup-*.exe
+          Start-Process -Wait -FilePath $setup.FullName -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
+          if (-not (Test-Path "$env:LOCALAPPDATA\Programs\FileMinify\launcher.js")) { throw 'not installed' }
+          # Also shows settings.env overriding the launcher's defaults: a 50 MB
+          # limit keeps the smoke suite's over-the-limit upload small.
+          Add-Content "$env:LOCALAPPDATA\FileMinify\settings.env" 'MAX_FILE_SIZE=50MB'
+
+      - name: Start it
+        shell: pwsh
+        run: |
+          $env:FM_NO_BROWSER = '1'
+          $app = "$env:LOCALAPPDATA\Programs\FileMinify"
+          Start-Process -FilePath "$app\node.exe" -ArgumentList "`"$app\launcher.js`"" `
+            -RedirectStandardOutput app.log -RedirectStandardError app-err.log
+
+      - name: Wait for it, with every tool found
+        run: |
+          for i in $(seq 1 60); do
+            health=$(curl -fsS 'http://localhost:3051/api/health?tools' 2>/dev/null) && break
+            sleep 2
+          done
+          echo "$health"
+          [ -n "$health" ] || { echo "the app never came up"; exit 1; }
+          if grep -q null <<<"$health"; then echo "a tool was not found"; exit 1; fi
+
+      - name: Smoke suite
+        run: backend/test/smoke.sh http://localhost:3051/api
+
+      - name: Logs
+        if: always()
+        run: cat app.log app-err.log 2>/dev/null || true
+
+      - name: Uninstall it
+        shell: pwsh
+        run: |
+          Start-Process -Wait -FilePath "$env:LOCALAPPDATA\Programs\FileMinify\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES'
+          foreach ($dir in "$env:LOCALAPPDATA\Programs\FileMinify", "$env:LOCALAPPDATA\FileMinify") {
+            if (Test-Path $dir) { Get-ChildItem -Recurse $dir | Select-Object -First 20 FullName; throw "$dir survived the uninstall" }
+          }
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Fetch the installer
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows-installer
+
+      # The SHA-256 goes into the winget manifest (packaging/winget/).
+      - name: Attach it to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          sha256sum FileMinify-Setup-*.exe
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" FileMinify-Setup-*.exe --clobber

@@ -75,6 +75,22 @@ which Radix's `asChild` passes a ref through); don't reach for `forwardRef`.
 - `routes/merge.js` — ordered merge into one PDF via pdf-lib.
 - `utils/converters.js` — `toPdf` plus `PDF_SOURCE_EXTS`, shared by conversion and
   merge, and the LibreOffice lock.
+- `utils/run.js` — every external command goes through `run(name, args)`, which
+  asks `utils/tools.js` for the binary. In Docker a name is itself; on Windows
+  it is found on PATH, in winget's folders or in the usual install folders.
+- `utils/paths.js` — `TEMP_DIR`, the one place uploads and results live.
+
+### Windows build (`windows/`, `packaging/winget/`)
+
+The same backend runs natively, serving the built frontend itself (and the API
+under `/api`, as nginx would) when `FM_STATIC_DIR` is set. `windows/launcher.js`
+sets that and the other `FM_*` variables (data dir, `FM_HOST=127.0.0.1`,
+`FM_TRUST_PROXY=0`), with overrides from `%LOCALAPPDATA%\FileMinify\settings.env`.
+`windows/build.sh` stages node.exe, the app and Ghostscript into an Inno Setup
+installer (`windows/fileminify.iss`, per-user). The winget manifest pulls in
+FFmpeg, ImageMagick, LibreOffice and the VC++ runtime. Ghostscript is bundled
+because winget has none (its installer is interactive-only). Without any
+`FM_*` variable set, nothing about the Docker setup changes.
 
 ## Invariants — these are fixed bugs, do not regress them
 
@@ -113,6 +129,18 @@ which Radix's `asChild` passes a ref through); don't reach for `forwardRef`.
    the frontend uses) is safe anywhere. To be a good neighbour on a shared
    host the backend uses `cpu_shares` instead: a relative weight, which only
    bites under contention and cannot be too large for any host.
+10. **Never run a bare `convert` on Windows.** `System32\convert.exe` is
+    Windows' disk-format converter; ImageMagick there is `magick`.
+    `utils/tools.js` maps the name. Call tools by name through `run()`, never
+    by a path or an `exec` of your own.
+11. **No Unix-only paths or separators in tool arguments.** The null device is
+    `os.devNull`, not `/dev/null`. `-x265-params` splits on `:`, which a
+    Windows path contains, so x265's two-pass stats file is named relative
+    to the temp dir that FFmpeg runs in.
+12. **Natively, nothing is in front of the backend**, so the launcher sets
+    `FM_TRUST_PROXY=0`. Trusting `X-Forwarded-For` there reopens invariant 6's
+    rate-limiter bypass. Verified: with 0, rotating the header still counts
+    down.
 
 ## Behaviour worth knowing
 
@@ -228,6 +256,15 @@ Two suites, both against a running stack and both in CI (jobs `backend` and
   radius, soft shadow, faint light hairline, transparent background - since a
   README can't carry CSS: the shadow lifts it off GitHub's white page, the
   hairline edges it on the dark one. Re-run it after a visible UI change; don't edit the PNGs.
+
+A separate workflow, `windows.yml` (not a required check), runs on a Windows
+runner when the backend, app or `windows/` change. It builds the installer,
+installs it silently, runs the smoke suite against the installed app at
+`:3051/api`, and uninstalls it. The installer is kept as a run artifact to try
+on a real PC. On a `v*` tag it is attached to the release, and the job prints
+the SHA-256 for the winget manifest. The native mode can be exercised on Linux
+too: run the backend image with `FM_STATIC_DIR` pointing at a built `dist/`,
+then run smoke and `e2e/run.sh` against it.
 
 Per-server settings (`MAX_FILE_MB`, `PROCESS_TIMEOUT_MIN`, `BACKEND_CPU_SHARES`,
 `TEMP_DIR`) come from an optional `.env` beside `docker-compose.yml`; see

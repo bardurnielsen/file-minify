@@ -5,6 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const { AppError } = require('../middleware/errorHandler');
 const { isSafeId } = require('../utils/safeId');
+const { TEMP_DIR } = require('../utils/paths');
 const router = express.Router();
 
 // Accepted MIME types, each mapped to the extensions it may be stored under.
@@ -63,7 +64,7 @@ const parseSize = (value, fallback) => {
 // Configure multer storage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, path.join(__dirname, '../temp'));
+    cb(null, TEMP_DIR);
   },
   filename: (req, file, cb) => {
     cb(null, `${uuidv4()}${safeExtFor(file)}`);
@@ -145,7 +146,7 @@ router.delete('/:id', (req, res) => {
         error: 'File not found'
       });
     }
-    const filePath = path.join(__dirname, '../temp', id);
+    const filePath = path.join(TEMP_DIR, id);
     
     // Check if file exists
     if (!fs.existsSync(filePath)) {

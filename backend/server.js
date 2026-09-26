@@ -19,12 +19,32 @@ const mergeRoutes = require('./routes/merge');
 // Import utilities
 const { errorHandler } = require('./middleware/errorHandler');
 const logger = require('./utils/logger');
+const { TEMP_DIR } = require('./utils/paths');
+const { toolReport } = require('./utils/tools');
+
+// The Windows build has no nginx: FM_STATIC_DIR points at the built frontend
+// and this server delivers it, plus the API under /api as nginx would.
+const STATIC_DIR = process.env.FM_STATIC_DIR || null;
 
 // Create Express app
 const app = express();
 
-// Set security-related middleware
-app.use(helmet());
+// Set security-related middleware. When serving the app itself it needs the
+// CSP nginx sends (blob: previews, inline styles). useDefaults is off because
+// helmet's defaults include upgrade-insecure-requests, which breaks the app on
+// plain http from a phone on the LAN.
+app.use(helmet(STATIC_DIR ? {
+  contentSecurityPolicy: {
+    useDefaults: false,
+    directives: {
+      defaultSrc: ["'self'"],
+      imgSrc: ["'self'", 'data:', 'blob:'],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      connectSrc: ["'self'"],
+    },
+  },
+} : undefined));
 
 // nginx serves the app and proxies /api on the same origin, so the browser
 // never makes a cross-origin call and no CORS headers are needed. The default
@@ -68,8 +88,11 @@ app.use((req, res, next) => {
 
 // nginx is the only thing in front of this, and it sets X-Forwarded-For.
 // Without this the limiter sees nginx's container address for every visitor and
-// buckets them all together, so one busy client locks out everyone.
-app.set('trust proxy', 1);
+// buckets them all together, so one busy client locks out everyone. Natively
+// nothing is in front, so the launcher sets FM_TRUST_PROXY=0: trusting the
+// header there would let a client pick its own address (invariant 6).
+app.set('trust proxy', process.env.FM_TRUST_PROXY === undefined
+  ? 1 : Number(process.env.FM_TRUST_PROXY));
 
 // Apply rate limiting. nginx proxies /api/* here with the prefix stripped, so
 // the paths that actually arrive are /upload, /compression, ... -- mounting this
@@ -85,7 +108,8 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-app.use(['/upload', '/compression', '/conversion', '/merge'], limiter);
+const api = express.Router();
+api.use(['/upload', '/compression', '/conversion', '/merge'], limiter);
 
 // Parse JSON body
 app.use(express.json());
@@ -97,38 +121,60 @@ app.use(compression());
 app.use(morgan('combined', { stream: { write: message => logger.info(message.trim()) } }));
 
 // Create temp directory if it doesn't exist
-const tempDir = path.join(__dirname, 'temp');
-if (!fs.existsSync(tempDir)) {
-  fs.mkdirSync(tempDir);
-}
+const tempDir = TEMP_DIR;
+fs.mkdirSync(tempDir, { recursive: true });
 
 // API routes
-app.use('/upload', uploadRoutes);
-app.use('/compression', compressionRoutes);
-app.use('/conversion', conversionRoutes);
-app.use('/merge', mergeRoutes);
+api.use('/upload', uploadRoutes);
+api.use('/compression', compressionRoutes);
+api.use('/conversion', conversionRoutes);
+api.use('/merge', mergeRoutes);
 
 // Health check endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok' });
+// ?tools adds where each external tool was found (null: missing), which is
+// how a native install shows that one of them is not there.
+api.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    ...(req.query.tools !== undefined && { tools: toolReport() }),
+  });
 });
 
 // Limits the frontend enforces before uploading. They come from the server's
 // environment (MAX_FILE_SIZE), so changing them is a Compose setting, not code.
-app.get('/config', (req, res) => {
+api.get('/config', (req, res) => {
   res.status(200).json({
     maxFileBytes: uploadRoutes.MAX_FILE_BYTES,
     maxFiles: uploadRoutes.MAX_FILES,
   });
 });
 
+app.use(api);
+
+if (STATIC_DIR) {
+  app.use('/api', api);
+  // Vite's hashed bundles can be cached for good; everything else revalidates.
+  app.use('/assets', express.static(path.join(STATIC_DIR, 'assets'), {
+    maxAge: '30d', immutable: true,
+  }));
+  app.use(express.static(STATIC_DIR));
+  app.get('/{*path}', (req, res) => res.sendFile(path.join(STATIC_DIR, 'index.html')));
+}
+
 // Error handling middleware
 app.use(errorHandler);
 
 // Start server
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
-  logger.info(`Server running on port ${PORT}`);
+// FM_HOST narrows where it listens; the Windows launcher uses 127.0.0.1 unless
+// phones on the LAN were allowed in. Unset means every interface, as in Docker.
+const HOST = process.env.FM_HOST || undefined;
+app.listen(PORT, HOST, () => {
+  logger.info(`Server running on ${HOST || 'all interfaces'}, port ${PORT}`);
+  for (const [name, found] of Object.entries(toolReport())) {
+    if (found) logger.info(`Tool ${name}: ${found}`);
+    else logger.warn(`Tool ${name}: NOT FOUND - features using it will fail`);
+  }
 });
 
 // Clean up temp files periodically

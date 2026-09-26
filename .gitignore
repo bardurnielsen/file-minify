@@ -28,3 +28,6 @@ dist
 e2e/.media/
 e2e/test-results/
 e2e/playwright-report/
+
+# Windows installer build (windows/build.sh)
+/build/

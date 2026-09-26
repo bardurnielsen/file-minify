@@ -1,8 +1,10 @@
 const path = require('path');
 const fs = require('fs');
+const { pathToFileURL } = require('url');
 const { AppError } = require('../middleware/errorHandler');
 const logger = require('./logger');
 const { run } = require('./run');
+const { DATA_DIR } = require('./paths');
 const { PDFDocument } = require('pdf-lib');
 
 const OFFICE_EXTS = ['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt'];
@@ -22,13 +24,21 @@ const withOfficeLock = (task) => {
 
 // Convert Office documents to PDF. LibreOffice overwrites an existing output
 // without prompting, so no non-interactive flag is needed here.
+//
+// Natively (FM_DATA_DIR set) LibreOffice gets a profile of its own: sharing the
+// user's means a conversion fails whenever they have LibreOffice open. In
+// Docker nobody else uses the container's profile.
+const officeProfile = DATA_DIR
+  ? [`-env:UserInstallation=${pathToFileURL(path.join(DATA_DIR, 'lo-profile')).href}`]
+  : [];
+
 const convertOfficeToPDF = (filePath, outDir = path.dirname(filePath)) =>
   withOfficeLock(async () => {
     const outputPath = path.join(outDir, `${path.basename(filePath, path.extname(filePath))}.pdf`);
     try {
       logger.info(`Converting ${filePath} to PDF in ${outDir}`);
       const { stdout, stderr } = await run('libreoffice', [
-        '--headless', '--convert-to', 'pdf', '--outdir', outDir, filePath,
+        ...officeProfile, '--headless', '--convert-to', 'pdf', '--outdir', outDir, filePath,
       ]);
       if (stdout) logger.info(`LibreOffice stdout: ${stdout}`);
       if (stderr) logger.warn(`LibreOffice stderr: ${stderr}`);
