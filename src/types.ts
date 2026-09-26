@@ -27,6 +27,16 @@ export interface PhoneAccess {
   urls: string[];
 }
 
+/** The Windows build's own check for a newer release (GET /native/update). */
+export interface UpdateStatus {
+  current: string | null;
+  available: boolean;
+  latest?: { version: string; notes: string };
+}
+
+/** A tool the Windows build could not find (GET /config, missingTools). */
+export type MissingTool = 'ffmpeg' | 'imagemagick' | 'libreoffice' | 'ghostscript' | 'vcruntime';
+
 export type Route = 'compression' | 'conversion';
 /** Routes that serve a download; 'merge' produces one file from many. */
 export type DownloadRoute = Route | 'merge';

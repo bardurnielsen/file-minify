@@ -22,7 +22,9 @@ const { errorHandler } = require('./middleware/errorHandler');
 const logger = require('./utils/logger');
 const { TEMP_DIR } = require('./utils/paths');
 const { toolReport } = require('./utils/tools');
-const { lanAddresses } = require('./utils/network');
+const { lanAddresses, fromThisMachine } = require('./utils/network');
+const nativeRoutes = require('./routes/native');
+const { missingTools } = require('./utils/tools');
 
 const PORT = process.env.PORT || 4000;
 // FM_HOST narrows where it listens; the Windows launcher uses 127.0.0.1 unless
@@ -160,8 +162,6 @@ api.use('/merge', mergeRoutes);
 // ?tools adds where each external tool was found (null: missing), which is
 // how a native install shows that one of them is not there. Only asked from
 // this machine: the paths include the Windows user name.
-const fromThisMachine = (req) =>
-  ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
 api.get('/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
@@ -175,7 +175,9 @@ api.get('/health', (req, res) => {
 // Natively, the app on the PC itself also gets `phone`: whether phones on the
 // network may connect (FM_HOST), and the addresses they would use, for its
 // "Use on your phone" panel. Asked fresh each time, since a router can hand
-// the PC a new address. Phones and other machines never get it.
+// the PC a new address. And `version` (for the footer and the update check)
+// and `missingTools`, for the warning that says what won't work. Phones and
+// other machines get none of it.
 api.get('/config', async (req, res) => {
   const phoneAccess = HOST !== '127.0.0.1';
   res.status(200).json({
@@ -186,11 +188,17 @@ api.get('/config', async (req, res) => {
         enabled: phoneAccess,
         urls: phoneAccess ? (await lanAddresses()).map((a) => `http://${a}:${PORT}`) : [],
       },
+      version: process.env.FM_VERSION || null,
+      missingTools: missingTools().map((m) => m.key),
     }),
   });
 });
 
 app.use(api);
+
+// The update check and installer, and installing missing tools: the Windows
+// build only, and only for the PC itself (routes/native.js).
+if (STATIC_DIR) api.use('/native', nativeRoutes);
 
 if (STATIC_DIR) {
   app.use('/api', api);

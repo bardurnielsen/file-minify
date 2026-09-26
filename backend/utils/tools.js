@@ -1,5 +1,7 @@
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
+const logger = require('./logger');
 
 // The external tools, by the names the code calls them. In Docker each one is
 // on PATH under exactly that name. A native Windows install is different:
@@ -96,4 +98,42 @@ const resolveTool = (name) => lookup(name) ?? TOOLS[name]?.win[0] ?? name;
 const toolReport = () =>
   Object.fromEntries(Object.keys(TOOLS).map((name) => [name, lookup(name)]));
 
-module.exports = { resolveTool, toolReport };
+
+// What the app tells the user is missing (Windows only; in Docker nothing
+// ever is), and the winget package that brings each. Ghostscript is bundled,
+// so it missing means a damaged install; it runs on the VC++ runtime.
+const PIECES = [
+  { key: 'ffmpeg', tools: ['ffmpeg', 'ffprobe'], winget: 'Gyan.FFmpeg' },
+  { key: 'imagemagick', tools: ['convert'], winget: 'ImageMagick.ImageMagick' },
+  { key: 'libreoffice', tools: ['libreoffice'], winget: 'TheDocumentFoundation.LibreOffice' },
+  { key: 'ghostscript', tools: ['gs'], winget: null },
+];
+
+const vcRuntimeFound = () =>
+  fs.existsSync(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'vcruntime140_1.dll'));
+
+const missingTools = () => {
+  if (process.platform !== 'win32') return [];
+  const report = toolReport();
+  const missing = PIECES.filter((p) => p.tools.some((t) => !report[t]));
+  if (!vcRuntimeFound()) missing.push({ key: 'vcruntime', winget: 'Microsoft.VCRedist.2015+.x64' });
+  return missing.map(({ key, winget }) => ({ key, winget }));
+};
+
+// Install packages with winget in a console window of its own, so the user
+// sees it working and answers Windows' permission prompts. The ids come from
+// PIECES above, never from a request. Returns at once; the tools are found
+// on their next lookup, with no restart.
+const installTools = (packages) => {
+  const steps = packages.map((id) =>
+    `echo. & echo Installing ${id}... & winget install --exact --id ${id} --accept-package-agreements --accept-source-agreements`);
+  const command = ['title Installing the tools FileMinify needs', ...steps,
+    'echo. & echo Done. This window closes by itself. & timeout /t 5 >nul'].join(' & ');
+  const child = spawn('cmd.exe', ['/d', '/s', '/c', `"${command}"`], {
+    detached: true, stdio: 'ignore', windowsVerbatimArguments: true,
+  });
+  child.once('error', (err) => logger.error(`Could not start the tools install: ${err.message}`));
+  child.unref();
+};
+
+module.exports = { resolveTool, toolReport, missingTools, installTools };

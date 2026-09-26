@@ -38,6 +38,9 @@ Name: tools; Description: "Download and install the tools FileMinify needs that 
 Name: desktopicon; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 Name: lan; Description: "Let phones and other computers on this network use FileMinify (Windows will ask to let it through the firewall)"; Flags: unchecked
 
+[Dirs]
+Name: "{localappdata}\FileMinify\logs"
+
 [InstallDelete]
 ; An upgrade replaces these whole, so nothing from an older version lingers.
 Type: filesandordirs; Name: "{app}\backend"
@@ -50,6 +53,8 @@ Source: "..\build\windows\app\*"; DestDir: "{app}"; Flags: ignoreversion recurse
 [Icons]
 Name: "{autoprograms}\FileMinify"; Filename: "{app}\node.exe"; Parameters: """{app}\launcher.js"""; WorkingDir: "{app}"; IconFilename: "{app}\fileminify.ico"; Comment: "Compress, convert and merge files"; Flags: runminimized
 Name: "{autoprograms}\FileMinify phone access"; Filename: "{app}\node.exe"; Parameters: """{app}\launcher.js"" --phone-access"; WorkingDir: "{app}"; IconFilename: "{app}\fileminify.ico"; Comment: "Let phones on this Wi-Fi use FileMinify, or stop them"; Flags: runminimized
+; The log (backend/utils/logger.js), for someone helping the user remotely.
+Name: "{autoprograms}\FileMinify log folder"; Filename: "{localappdata}\FileMinify\logs"; Comment: "FileMinify's log files, to send when something goes wrong"
 Name: "{autodesktop}\FileMinify"; Filename: "{app}\node.exe"; Parameters: """{app}\launcher.js"""; WorkingDir: "{app}"; IconFilename: "{app}\fileminify.ico"; Comment: "Compress, convert and merge files"; Flags: runminimized; Tasks: desktopicon
 
 [Run]

@@ -61,6 +61,8 @@ https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/tag/$GS_TAG
 SRC
 
 cp windows/launcher.js "$APP/"
+# What the launcher reports as FM_VERSION: the footer, and the update check.
+echo "$VERSION" > "$APP/version.txt"
 cp -r windows/magick "$APP/magick"
 cp public/favicon.ico "$APP/fileminify.ico"
 cp LICENSE "$APP/LICENSE.txt"

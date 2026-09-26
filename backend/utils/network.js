@@ -44,4 +44,8 @@ const lanAddresses = async () => {
     : unique;
 };
 
-module.exports = { lanAddresses };
+// A request from the PC itself, as opposed to a phone or another machine.
+const fromThisMachine = (req) =>
+  ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+
+module.exports = { lanAddresses, fromThisMachine };

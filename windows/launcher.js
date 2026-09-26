@@ -63,6 +63,14 @@ if (fs.existsSync(path.join(GS_BIN, 'gswin64c.exe'))) {
   process.env.MAGICK_GHOSTSCRIPT_PATH ||= GS_BIN;
 }
 
+// This installation's version (windows/build.sh), for the footer and the
+// update check.
+try {
+  process.env.FM_VERSION ||= fs.readFileSync(path.join(__dirname, 'version.txt'), 'utf8').trim();
+} catch {
+  // a development copy
+}
+
 // ImageMagick reads windows\magick\policy.xml as well as its own: no SVG, MVG,
 // text or URL decoders, whatever a file's bytes claim.
 process.env.MAGICK_CONFIGURE_PATH ||= path.join(__dirname, 'magick');
@@ -167,14 +175,17 @@ const saveHost = (host) => {
   fs.writeFileSync(SETTINGS, `${lines.join('\r\n')}\r\n`);
 };
 
+const powershell = (command) => new Promise((resolve) =>
+  execFile('powershell.exe', ['-NoProfile', '-Command', command], { windowsHide: true }, () => resolve()));
+
+// FileMinify's own window (the Edge process with its profile).
+const CLOSE_WINDOWS = "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'msedge.exe' -and $_.CommandLine -like '*\\FileMinify\\window*' } | Invoke-CimMethod -MethodName Terminate | Out-Null";
+
 // Stop a running FileMinify (its node.exe and its window) so it can start
 // again with the new setting.
 const stopRunning = async () => {
   const node = process.execPath.replace(/'/g, "''");
-  await new Promise((resolve) => execFile('powershell.exe', ['-NoProfile', '-Command',
-    `Get-Process node -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq '${node}' -and $_.Id -ne ${process.pid} } | Stop-Process -Force; ` +
-    "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'msedge.exe' -and $_.CommandLine -like '*\\FileMinify\\window*' } | Invoke-CimMethod -MethodName Terminate | Out-Null"],
-  { windowsHide: true }, resolve));
+  await powershell(`Get-Process node -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq '${node}' -and $_.Id -ne ${process.pid} } | Stop-Process -Force; ${CLOSE_WINDOWS}`);
   for (let i = 0; i < 20 && await healthy(); i++) await sleep(500);
 };
 
@@ -208,6 +219,12 @@ const main = async () => {
     openApp(page);
     return;
   }
+
+  // Nothing is serving, so a FileMinify window still open is an orphan: left
+  // behind when setup replaced FileMinify during an update, or after a crash.
+  // Close it, or the new window would open inside it and its closing would no
+  // longer stop FileMinify.
+  if (findEdge() && !process.env.FM_NO_BROWSER) await powershell(CLOSE_WINDOWS);
 
   process.title = 'FileMinify - close this window to stop';
   // Before it is up, a crash is a failed start and waits to be read. After,
