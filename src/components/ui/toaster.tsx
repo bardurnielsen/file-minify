@@ -1,8 +1,8 @@
-import React, { createContext, useContext, useReducer, useRef } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useReducer, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { XCircle, AlertTriangle, Info, X } from 'lucide-react';
+import { XCircle, AlertTriangle, Info, X, CheckCircle2 } from 'lucide-react';
 
-type ToastType = 'error' | 'warning' | 'info';
+type ToastType = 'error' | 'warning' | 'info' | 'success';
 
 interface Toast {
   id: string;
@@ -10,6 +10,10 @@ interface Toast {
   title: string;
   description?: string;
   duration?: number;
+  /** A button beside the text; clicking it also closes the toast. */
+  action?: { label: string; onClick: () => void };
+  /** A new toast with the same key replaces the old one rather than stacking. */
+  key?: string;
 }
 
 type ToastAction =
@@ -26,8 +30,10 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
 function toastReducer(state: Toast[], action: ToastAction): Toast[] {
   switch (action.type) {
-    case 'ADD_TOAST':
-      return [...state, action.toast];
+    case 'ADD_TOAST': {
+      const { key } = action.toast;
+      return [...state.filter((toast) => !key || toast.key !== key), action.toast];
+    }
     case 'REMOVE_TOAST':
       return state.filter((toast) => toast.id !== action.id);
     default:
@@ -41,27 +47,28 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   // the same id, and reading the clock here isn't pure.
   const nextId = useRef(0);
 
-  const addToast = (toast: Omit<Toast, 'id'>) => {
-    const id = String(++nextId.current);
-    const duration = toast.duration || 5000; // Default 5 seconds
-    
-    dispatch({ type: 'ADD_TOAST', toast: { ...toast, id, duration } });
-    
-    // Auto-remove after duration
-    setTimeout(() => {
-      removeToast(id);
-    }, duration);
-  };
-
-  const removeToast = (id: string) => {
+  // Stable, so an effect can subscribe with them without resubscribing on
+  // every toast.
+  const removeToast = useCallback((id: string) => {
     dispatch({ type: 'REMOVE_TOAST', id });
-  };
+  }, []);
 
-  const value = {
-    toasts,
-    addToast,
-    removeToast,
-  };
+  const addToast = useCallback(
+    (toast: Omit<Toast, 'id'>) => {
+      const id = String(++nextId.current);
+      const duration = toast.duration || 5000; // Default 5 seconds
+
+      dispatch({ type: 'ADD_TOAST', toast: { ...toast, id, duration } });
+
+      // Auto-remove after duration
+      setTimeout(() => {
+        removeToast(id);
+      }, duration);
+    },
+    [removeToast]
+  );
+
+  const value = useMemo(() => ({ toasts, addToast, removeToast }), [toasts, addToast, removeToast]);
 
   return (
     <ToastContext.Provider value={value}>
@@ -86,12 +93,14 @@ function Toaster() {
     error: <XCircle className="w-5 h-5 text-rose-500" />,
     warning: <AlertTriangle className="w-5 h-5 text-amber-500" />,
     info: <Info className="w-5 h-5 text-zinc-500" />,
+    success: <CheckCircle2 className="w-5 h-5 text-emerald-500" />,
   };
 
   const backgrounds = {
     error: 'border-rose-200 dark:border-rose-900',
     warning: 'border-amber-200 dark:border-amber-900',
     info: 'border-zinc-200 dark:border-zinc-700',
+    success: 'border-emerald-200 dark:border-emerald-900',
   };
 
   return (
@@ -115,6 +124,18 @@ function Toaster() {
                   <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
                     {toast.description}
                   </p>
+                )}
+                {toast.action && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toast.action?.onClick();
+                      removeToast(toast.id);
+                    }}
+                    className="mt-2 rounded text-sm font-medium text-emerald-700 underline decoration-current/40 underline-offset-2 transition-colors hover:decoration-current focus-ring dark:text-emerald-400"
+                  >
+                    {toast.action.label}
+                  </button>
                 )}
               </div>
               <button

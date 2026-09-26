@@ -13,10 +13,10 @@ interface FileStore {
   /** Per-file upload limit, as the server reports it (GET /config). */
   maxFileBytes: number;
   setMaxFileBytes: (bytes: number) => void;
-  /** The Windows build, on the PC itself (GET /config); null everywhere else. */
+  /** The desktop app, on the PC itself (GET /config); null everywhere else. */
   phone: PhoneAccess | null;
   setPhone: (phone: PhoneAccess | null) => void;
-  /** Also the Windows build's: its version, what it's missing, and updates. */
+  /** Also the desktop app's: its version, what it's missing, and updates. */
   version: string | null;
   missingTools: MissingTool[];
   setNative: (native: { version: string | null; missingTools: MissingTool[] }) => void;

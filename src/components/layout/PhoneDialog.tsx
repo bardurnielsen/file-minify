@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { Smartphone, X } from 'lucide-react';
+import { Loader2, Smartphone, X } from 'lucide-react';
 import { encode } from 'uqr';
 import { Button } from '../ui/button';
 import { fetchConfig } from '../../lib/api';
+import { desktop } from '../../lib/native';
 import { useFiles } from '../../hooks/useFiles';
 
 /**
@@ -39,13 +40,43 @@ interface PhoneDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+const strong = 'text-zinc-900 dark:text-zinc-100';
+
 /**
- * "Use on your phone", in the Windows build on the PC itself: the address a
- * phone on the same Wi-Fi opens, as a QR code, or how to allow phones at all.
+ * "Use on your phone", in the desktop app on the PC itself: the address a
+ * phone on the same Wi-Fi opens, as a QR code, and the switch that allows
+ * phones at all (desktop.setPhoneAccess(); main restarts the server and
+ * reloads the window, with ?phone when turned on). A browser tab on the same
+ * PC has no bridge, so there it says where the switch is.
  * Asked afresh on every opening, since a router can give the PC a new address.
  */
 const PhoneDialog: React.FC<PhoneDialogProps> = ({ open, onOpenChange }) => {
   const phone = useFiles((s) => s.phone);
+  const [switching, setSwitching] = useState(false);
+  const [switchFailed, setSwitchFailed] = useState(false);
+
+  const setAccess = (on: boolean) => {
+    if (!desktop) return;
+    setSwitching(true);
+    setSwitchFailed(false);
+    desktop.setPhoneAccess(on).then(
+      // Main normally reloads the window now; if it doesn't, catch up here.
+      () =>
+        void fetchConfig().then((config) => {
+          if (config) useFiles.getState().setPhone(config.phone ?? null);
+          setSwitching(false);
+        }),
+      () => {
+        setSwitching(false);
+        setSwitchFailed(true);
+      }
+    );
+  };
+  const failed = switchFailed && (
+    <p role="alert" className="text-rose-600 dark:text-rose-400">
+      Phone access could not be changed. Try again, or use the FileMinify icon in the notification area.
+    </p>
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -53,7 +84,7 @@ const PhoneDialog: React.FC<PhoneDialogProps> = ({ open, onOpenChange }) => {
     void fetchConfig().then((config) => {
       if (!live || !config) return;
       useFiles.getState().setPhone(config.phone ?? null);
-      // Not the Windows build, or not asked from the PC (a stray ?phone).
+      // Not the desktop app, or not asked from the PC (a stray ?phone).
       if (!config.phone) onOpenChange(false);
     });
     return () => {
@@ -62,6 +93,19 @@ const PhoneDialog: React.FC<PhoneDialogProps> = ({ open, onOpenChange }) => {
   }, [open, onOpenChange]);
 
   const [main, ...others] = phone?.urls ?? [];
+  const turnOff = desktop && (
+    <div className="w-full space-y-2 text-center text-xs">
+      <button
+        type="button"
+        onClick={() => setAccess(false)}
+        disabled={switching}
+        className="rounded underline decoration-current/40 underline-offset-2 transition-colors hover:text-zinc-900 hover:decoration-current focus-ring disabled:opacity-60 dark:hover:text-zinc-100"
+      >
+        {switching ? 'Turning off…' : 'Turn off phone access'}
+      </button>
+      {failed}
+    </div>
+  );
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -96,21 +140,34 @@ const PhoneDialog: React.FC<PhoneDialogProps> = ({ open, onOpenChange }) => {
             ) : !phone.enabled ? (
               <div className="space-y-3">
                 <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Phone access is off.</p>
-                <p>To turn it on:</p>
-                <ol className="list-decimal space-y-1 pl-5">
-                  <li>Open the Windows <strong className="text-zinc-900 dark:text-zinc-100">Start</strong> menu.</li>
-                  <li>
-                    Choose <strong className="text-zinc-900 dark:text-zinc-100">FileMinify phone access</strong> and
-                    answer <strong className="text-zinc-900 dark:text-zinc-100">Yes</strong>.
-                  </li>
-                </ol>
-                <p>FileMinify restarts and shows the code to scan here.</p>
+                {desktop ? (
+                  <>
+                    <Button variant="primary" onClick={() => setAccess(true)} disabled={switching}>
+                      {switching && <Loader2 className="h-4 w-4 animate-spin" />}
+                      {switching ? 'Turning on…' : 'Turn on phone access'}
+                    </Button>
+                    <p>FileMinify restarts and shows the code to scan here.</p>
+                    {failed}
+                  </>
+                ) : (
+                  <>
+                    <p>
+                      To turn it on, right-click the <strong className={strong}>FileMinify</strong> icon in the
+                      taskbar’s notification area (the tray, by the clock) and choose{' '}
+                      <strong className={strong}>Phone access</strong>.
+                    </p>
+                    <p>Then open this again to see the code to scan.</p>
+                  </>
+                )}
               </div>
             ) : !main ? (
-              <p>
-                This PC isn’t connected to a network at the moment. Connect it to the Wi-Fi the phone uses,
-                then open this again.
-              </p>
+              <div className="space-y-3">
+                <p>
+                  This PC isn’t connected to a network at the moment. Connect it to the Wi-Fi the phone uses,
+                  then open this again.
+                </p>
+                {turnOff}
+              </div>
             ) : (
               <div className="flex flex-col items-center gap-4">
                 <QrCode text={main} />
@@ -130,13 +187,18 @@ const PhoneDialog: React.FC<PhoneDialogProps> = ({ open, onOpenChange }) => {
                   </p>
                 )}
                 <div className="w-full space-y-1.5 border-t border-zinc-100 pt-4 text-xs dark:border-zinc-800">
-                  <p>The phone must be on the same Wi-Fi as this PC, and FileMinify must be running here.</p>
+                  <p>
+                    The phone must be on the same Wi-Fi as this PC, and FileMinify must be running here.
+                    {desktop &&
+                      ' While phone access is on, closing the window keeps it running in the notification area.'}
+                  </p>
                   <p>
                     Phone can’t connect? Windows asks once whether to let{' '}
-                    <strong className="text-zinc-800 dark:text-zinc-200">Node.js JavaScript Runtime</strong> through
-                    its firewall: that is FileMinify, and it needs <em>Private networks</em> allowed.
+                    <strong className="text-zinc-800 dark:text-zinc-200">FileMinify</strong> through its firewall:
+                    it needs <em>Private networks</em> allowed.
                   </p>
                 </div>
+                {turnOff}
               </div>
             )}
           </div>

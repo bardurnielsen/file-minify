@@ -120,7 +120,8 @@ localStorage (`lib/updateNotice.ts`), while the header's "Update available"
 stays. On a fresh start the launcher closes any orphaned FileMinify window,
 such as the one setup leaves behind during an update. The log also goes to
 `%LOCALAPPDATA%\FileMinify\logs`; the Start menu has an entry for that folder.
-`e2e/tests/native.spec.ts` fakes all of this for the Docker stack.
+The UI now reaches these through the 2.0 bridge instead, and
+`e2e/tests/native.spec.ts` fakes that (see below).
 `windows/build.sh` stages node.exe, the app and Ghostscript into an Inno Setup
 installer (`windows/fileminify.iss`, per-user). The winget manifest pulls in
 FFmpeg, ImageMagick, LibreOffice and the VC++ runtime. Ghostscript is bundled
@@ -177,6 +178,21 @@ pinned exactly. This is the contract the pieces are built against:
   - `ipcMain` handlers accept only the app window from the app origin.
   - No HTTP endpoint starts a program: `/native/*` goes, and `/config` keeps
     its read-only `phone`, `version`, `missingTools` and `installingTools`.
+  - What the UI expects of main. `startUpdate()` resolves once the download
+    is verified, just before `quitAndInstall`, and rejects if it fails;
+    `onUpdateProgress` gives 0-100 meanwhile. `installTools()` resolves with
+    `{ok:false, problem}` rather than rejecting; `'running'` is waited for
+    like a fresh start (polling `/config`'s `installingTools`).
+    `setPhoneAccess(on)` resolves once the server is back with the new
+    setting; main then reloads the window, with `?phone` when turned on.
+    `onDownloadSaved` fires for every download saved to Downloads, with an
+    `id` that `showDownload(id)` accepts. `setBusy` is sent on every change,
+    starting with `false`: true while any file uploads, waits in the queue or
+    processes, or a merge runs.
+  - Without the bridge (a browser tab on the same PC) the UI offers no update
+    or tools install and points to the app's window or its tray icon.
+  - `e2e/tests/desktop-fake.ts` fakes the bridge for the Docker stack;
+    `DESKTOP_BRIDGE_KEYS` there is what the real preload must expose.
 - **settings.env keys added:** `FM_UPDATE_PRERELEASE=1` (testers get release
   candidates), `FM_DISABLE_GPU=1`. For CI only: `FM_UPDATE_FEED`
   (127.0.0.1 URLs only) and `FM_NO_WINDOW=1` (server and tray, no window).
@@ -351,7 +367,8 @@ Two suites, both against a running stack and both in CI (jobs `backend` and
 - `e2e/run.sh` - the browser suite (Playwright, `e2e/tests/`): drop-and-process,
   held videos and their settings, labelled download names, merge, sliders and
   the format picker, untyped uploads, the drag overlay, the video queue, the
-  settings panel's exit. It runs in the Playwright image whose tag run.sh reads
+  settings panel's exit, and the desktop app's notices, phone switch and
+  download toast against a faked bridge. It runs in the Playwright image whose tag run.sh reads
   from `e2e/package.json` (pinned exactly, so a Dependabot bump moves both),
   and makes its test videos with the backend's ffmpeg (`e2e/make-media.sh`).
   Every test also fails on any browser console error. Each of its bug tests
