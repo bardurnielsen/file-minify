@@ -139,55 +139,65 @@ front door that skips nginx and the rate limiting.
 
 ### On Windows, without Docker
 
-For one PC at home there is a native Windows build, no Docker needed. Either:
+For one PC at home there is a Windows app, no Docker needed. It's a normal
+program, with its own window, a taskbar icon and a notification-area (tray)
+icon. It installs for the current user only. Either:
 
 - **Download and double-click** `FileMinify-Setup-<version>.exe` from the
-  [Releases](https://github.com/bardurnielsen/file-minify/releases) page and
-  click through. Setup offers to fetch whatever is missing of FFmpeg,
-  ImageMagick, LibreOffice and the VC++ runtime (up to about 650 MB), through
-  the winget built into Windows 10 and 11, in a window that shows the progress.
+  [Releases](https://github.com/bardurnielsen/file-minify/releases) page. It
+  installs and starts at once. The first time, FileMinify offers to fetch
+  whatever is missing of FFmpeg, ImageMagick, LibreOffice and the VC++
+  runtime (up to about 650 MB), through the winget built into Windows 10 and
+  11, in a window that shows the progress.
 - **Or, in a terminal:**
   ```powershell
   winget install BardurNielsen.FileMinify
   ```
   Winget brings the same tools as dependencies.
 
-Either way Windows asks for administrator rights for some of the tools;
-FileMinify itself installs for the current user only. Start it from the Start menu: FileMinify opens in a
-window of its own (Edge's app mode, at **http://localhost:3051**), and closing
-that window stops it. A console window sits minimised in the taskbar beside it
-with the log.
+Windows asks for administrator rights for some of the tools. Closing the
+window quits FileMinify, unless phones may use it (below).
 
-- **Phones:** only this PC can reach FileMinify until phone access is on. To
-  turn it on, choose **FileMinify phone access** in the Start menu (or tick the
-  box in the installer, run with `winget install -i` to see it).
-  - **Getting the phone there:** press **Use on phone** in the app on the PC,
-    then scan the QR code with the phone's camera, or type the address shown.
-    It's worked out afresh each time, so it stays right if the router hands
-    out a new one.
-  - **Firewall:** Windows asks once whether to let *Node.js JavaScript
-    Runtime* (that is FileMinify) through its firewall; allow *Private
-    networks*.
-  - **Stopping:** with phone access on, FileMinify keeps running when its
-    window closes, so phones aren't cut off; closing the console window stops
-    it. The same Start-menu entry turns phone access off again.
-- **Updates:** FileMinify asks GitHub about newer versions when it starts, at
-  most every 12 hours. When there is one, a bar offers **Update** (it
-  downloads the new setup and starts it; FileMinify restarts at the end),
-  **Later** (quiet for a week) or **Skip this version**. Either way the
-  header keeps an **Update available** button until it's done.
-  `FM_UPDATE_CHECK=0` in settings.env turns the check off.
-- **Missing tools:** if one is missing (declined in setup, or uninstalled
-  since), a bar says what won't work, and **Install** fetches it.
-- **When something goes wrong:** Start menu → **FileMinify log folder**. The
-  file in there is what to send whoever is helping.
+- **Phones:** only this PC can reach FileMinify until phone access is on. Turn
+  it on in the app (**Use on phone** → **Turn on phone access**) or from the
+  tray icon (**Phone access**).
+  - **Getting the phone there:** **Use on phone** shows the address as a QR
+    code to scan with the phone's camera, or to type in. It's worked out
+    afresh each time, so it stays right if the router hands out a new one.
+  - **Firewall:** Windows asks once whether to let *FileMinify* through its
+    firewall: allow *Private networks*. If phones still can't connect,
+    Windows may treat the Wi-Fi as a *Public* network; set it to *Private* in
+    Windows Settings.
+  - **Stopping:** with phone access on, closing the window keeps FileMinify
+    running in the tray, so phones aren't cut off. **Quit FileMinify** in the
+    tray menu stops it.
+- **Start with Windows** (tray menu): FileMinify starts quietly in the tray
+  when you log in. That suits a PC phones rely on.
+- **Busy PCs stay usable:** encoding runs at below-normal priority. It gets
+  the whole processor when the PC is idle, but what you're doing comes first.
+  While files are processing, including a phone's, Windows won't go to sleep.
+  Quitting or updating asks first.
+- **Downloads** go straight to your Downloads folder; a message says so and
+  offers **Show in folder**.
+- **Updates:** FileMinify checks GitHub for newer versions when it starts and
+  every 12 hours. When there is one, a bar offers **Update** (it downloads
+  the new version, checks it, installs it and restarts), **Later** (quiet for
+  a week) or **Skip this version**. Either way the header keeps an **Update
+  available** button until it's done. `FM_UPDATE_CHECK=0` in settings.env
+  turns the check off.
+- **Missing tools:** if one is missing (declined at first start, or
+  uninstalled since), a bar says what won't work, and **Install** fetches it.
+- **When something goes wrong:** tray menu → **Open log folder**. The files in
+  there are what to send whoever is helping.
 - **SmartScreen may warn on first run**, because the installer isn't
   code-signed. Choose *More info* → *Run anyway*.
 - **Settings** (for example `MAX_FILE_SIZE=200MB` or `PROCESS_TIMEOUT_MIN=60`) go
   in `%LOCALAPPDATA%\FileMinify\settings.env`, one `KEY=value` per line. The
   defaults match the ship's server: 500 MB per file and 30 minutes per job.
-- **If setup couldn't fetch a tool** (declined, offline, or no winget), running
-  setup again retries. Or install them yourself:
+- **Upgrading from 1.0.x** (the earlier Windows build): the 2.0 installer, or
+  1.0.x's own update notice, replaces it and keeps its settings, including
+  phone access. A taskbar pin of the old version is pointed at the new app.
+- **Tools by hand**, if fetching them failed (declined, offline, or no winget):
   `winget install Gyan.FFmpeg ImageMagick.ImageMagick TheDocumentFoundation.LibreOffice Microsoft.VCRedist.2015+.x64`.
 
 ## Development

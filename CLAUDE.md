@@ -87,43 +87,35 @@ which Radix's `asChild` passes a ref through); don't reach for `forwardRef`.
 ### Windows build (`desktop/`, `packaging/winget/`)
 
 The same backend runs natively, serving the built frontend itself (and the API
-under `/api`, as nginx would) when `FM_STATIC_DIR` is set. The launcher (1.0.x's
-`windows/launcher.js`, in 2.0 the desktop app's main process) sets that and the other `FM_*` variables (data dir, `FM_HOST=127.0.0.1`,
-`FM_TRUST_PROXY=0`), with overrides from `%LOCALAPPDATA%\FileMinify\settings.env`.
-**Phone access** (listening beyond `127.0.0.1`) is switched from the Start-menu
-entry "FileMinify phone access" (`launcher.js --phone-access`: it asks, saves
-`FM_HOST` in settings.env, restarts FileMinify and opens `/?phone`). Winget
-installs silently, so the installer's tickbox is out of reach there. In
-native mode `/config` gives the PC itself (never another machine) a `phone`
-block: `enabled`, plus the addresses from `utils/network.js` (virtual
-adapters left out, the default route's first). The header's "Use on phone"
-button and `PhoneDialog` show it as a QR code (`uqr`), asked afresh on every
-opening. `e2e/tests/phone.spec.ts` fakes that block, since Docker never
-sends it.
-The launcher opens the app in Edge's app mode with a profile of its own
-(`%LOCALAPPDATA%\FileMinify\window`), so the Edge process exiting means the
-window closed, and that stops FileMinify. With LAN access on it doesn't:
-phones may still be using it, so the minimised console window is the off
-switch.
-In 1.0.x, setup run by hand (a downloaded .exe) offered a "tools" task, shown
-only when one was missing, that installed FFmpeg, ImageMagick, LibreOffice and
-the VC++ runtime through winget in a visible window (Inno's
-`InstallMissingTools`). 2.0's oneClick installer asks nothing; the app offers
-the tools on its first start instead.
-In 1.0.x, `routes/native.js` (`/native/update`, `/native/tools`) checked for
-and started an update and ran winget, answering only the PC itself. 2.0
-removed it along with `utils/update.js`: no HTTP endpoint starts a program.
-The update is the desktop app's own (electron-updater), and the tools install
-(`installTools()` in `utils/tools.js`, winget in a visible console for
-whatever `missingTools()` reports) is asked for over `process.parentPort`.
-
-The app shows these as notices (`Notices.tsx`). "Later" and "Skip" live in
-localStorage (`lib/updateNotice.ts`), while the header's "Update available"
-stays. On a fresh start the launcher closes any orphaned FileMinify window,
-such as the one setup leaves behind during an update. The log also goes to
-`%LOCALAPPDATA%\FileMinify\logs`; the Start menu has an entry for that folder.
-The UI now reaches these through the 2.0 bridge instead, and
-`e2e/tests/native.spec.ts` fakes that (see below).
+under `/api`, as nginx would) when `FM_STATIC_DIR` is set. The desktop app's
+main process sets that and the other `FM_*` variables (data dir,
+`FM_HOST=127.0.0.1`, `FM_TRUST_PROXY=0`), with overrides from
+`%LOCALAPPDATA%\FileMinify\settings.env` (see "Desktop app").
+- **Phone access** (listening beyond `127.0.0.1`) is switched in the app
+  (`setPhoneAccess` over the bridge, from the phone panel) or in the tray.
+  Main saves `FM_HOST` in settings.env, restarts the server and reloads the
+  window with `/?phone`.
+- **The phone panel.** In native mode `/config` gives the PC itself (never
+  another machine) a `phone` block: `enabled`, plus the addresses from
+  `utils/network.js` (virtual adapters left out, the default route's
+  first). The header's "Use on phone" button and `PhoneDialog` show it as a
+  QR code (`uqr`), asked afresh on every opening.
+  `e2e/tests/phone.spec.ts` fakes that block, since Docker never sends it.
+- **Closing the window** quits, unless phone access is on: then it hides to
+  the tray, whose Quit stops it.
+- **Tools.** The oneClick installer asks nothing; the app offers the missing
+  tools on its first start (winget in a visible console:
+  `installTools()` / `missingTools()` in `utils/tools.js`, asked for over
+  `process.parentPort`).
+- **No HTTP endpoint starts a program.** 1.0.x had `routes/native.js`
+  (`/native/update`, `/native/tools`) and `utils/update.js`; 2.0 removed
+  them. The update is electron-updater's.
+- **Notices and logs.** The app shows update and tools notices
+  (`Notices.tsx`); "Later" and "Skip" live in localStorage
+  (`lib/updateNotice.ts`) while the header's "Update available" stays. Logs
+  go to `%LOCALAPPDATA%\FileMinify\logs` (fileminify.log from the backend,
+  desktop.log from main), opened from the tray. The UI reaches all of this
+  through the bridge, which `e2e/tests/native.spec.ts` fakes.
 `desktop/build.sh` stages the backend (with its own production node_modules),
 the built app and Ghostscript, and electron-builder makes the per-user NSIS
 installer (`desktop/electron-builder.yml`, with `desktop/build/installer.nsh`;
@@ -345,7 +337,7 @@ pinned exactly. This is the contract the pieces are built against:
     `os.devNull`, not `/dev/null`. `-x265-params` splits on `:`, which a
     Windows path contains, so x265's two-pass stats file is named relative
     to the temp dir that FFmpeg runs in.
-12. **Natively, nothing is in front of the backend**, so the launcher sets
+12. **Natively, nothing is in front of the backend**, so the desktop app sets
     `FM_TRUST_PROXY=0`. Trusting `X-Forwarded-For` there reopens invariant 6's
     rate-limiter bypass. Verified: with 0, rotating the header still counts
     down.
@@ -356,6 +348,27 @@ pinned exactly. This is the contract the pieces are built against:
     renders SVG itself. Verified by giving a container `rsvg-convert`: the old
     call made a PDF, the pinned one refuses. `desktop/magick/policy.xml` is
     the second lock. Smoke: "svg disguised as png".
+
+
+14. **No HTTP endpoint starts a program.** 1.0.x's `/native/*` did, guarded to
+    the PC itself. In 2.0, updating and installing tools go through the
+    desktop bridge (`window.fileminify`), whose handlers accept only the app
+    window, from the app origin, while our own server listens.
+15. **`appId` and the 1.0.x migration are permanent.** The appId
+    `com.bardurnielsen.fileminify` is where the uninstall key, winget's
+    ProductCode and every update come from. `customInit`'s 1.0.x removal must
+    stay in every release, because a 1.0.3 that updates late still gets
+    whatever is newest.
+16. **Every release stays updatable from 1.0.3:**
+    - It is published as `releases/latest`, never as a draft.
+    - Its asset is named exactly `FileMinify-Setup-X.Y.Z.exe`, with a
+      matching `vX.Y.Z` tag and GitHub's sha256 digest.
+    - Prereleases are only `vX.Y.Z-beta.N`: an `rc` channel never gets the
+      stable release in electron-updater.
+    - A published release's installer is never replaced; release a new
+      version instead.
+
+    The release job checks all of this.
 
 ## Behaviour worth knowing
 

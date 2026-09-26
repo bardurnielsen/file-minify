@@ -252,6 +252,12 @@ jobs:
           # ImageMagick is pointed at the installed policy, not the inherited path.
           grep -F 'resources\magick' "$log" || { echo "desktop.log names no resources\\magick"; exit 1; }
           if grep -F 'C:\nope' "$log"; then echo "an inherited MAGICK_CONFIGURE_PATH was used"; exit 1; fi
+          # The server (Electron's utility process running the backend) runs
+          # below normal priority, so an encode doesn't take the PC over; the
+          # tools it starts inherit it.
+          prio=$(powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='FileMinify.exe'\" | Where-Object { \$_.CommandLine -like '*node.mojom.NodeService*' } | ForEach-Object { (Get-Process -Id \$_.ProcessId).PriorityClass }")
+          echo "server priority: $prio"
+          [ "$(echo $prio | tr -d '\r')" = BelowNormal ] || { echo "the server does not run below normal priority"; exit 1; }
 
           # Proof the window renders (a per-user install can fail to start
           # the GPU process).
