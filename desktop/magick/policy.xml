@@ -8,8 +8,8 @@
     stealth NMTOKEN #IMPLIED value CDATA #IMPLIED>
 ]>
 <!--
-  FileMinify's ImageMagick policy on Windows, found through MAGICK_CONFIGURE_PATH
-  (windows/launcher.js). The backend already names the decoder for every input
+  FileMinify's ImageMagick policy on Windows, found through MAGICK_CONFIGURE_PATH,
+  which the desktop app points at resources\magick. The backend already names the decoder for every input
   (magickInput in backend/utils/converters.js); this is the second lock. These
   decoders can read local files or the network, and FileMinify never needs them.
 -->

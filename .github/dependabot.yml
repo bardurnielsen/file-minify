@@ -23,6 +23,19 @@ updates:
   - package-ecosystem: npm
     directory: /e2e
     schedule: { interval: weekly }
+  # The desktop app (Electron, electron-builder, electron-updater), pinned
+  # exactly. Each bump runs the Windows workflow, whose update test installs
+  # a build over a build. Electron's majors (every 8 weeks) wait until 2.0
+  # ships; then this rule goes, and each major is taken deliberately.
+  - package-ecosystem: npm
+    directory: /desktop
+    schedule: { interval: weekly }
+    groups:
+      desktop-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: electron
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: npm
     directory: /backend
     schedule: { interval: weekly }

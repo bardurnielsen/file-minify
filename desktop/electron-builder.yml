@@ -41,7 +41,14 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: FileMinify
   uninstallDisplayName: FileMinify
+  # %LOCALAPPDATA%\FileMinify is removed by installer.nsh's customUnInstall
+  # instead (electron-builder's own option would look in %APPDATA%).
   deleteAppDataOnUninstall: false
+  # The 1.0.x migration, the GPU folder permission and the data clean-up.
+  include: build/installer.nsh
+  # The .blockmap beside the installer: electron-updater then downloads only
+  # the blocks that changed since the installed version.
+  differentialPackage: true
 # Only for the app-update.yml electron-updater reads; releases are uploaded by
 # the release job, never by electron-builder (it would make drafts).
 publish:

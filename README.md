@@ -309,4 +309,4 @@ MIT — see [LICENSE](LICENSE).
 
 The Windows installer also carries an unmodified copy of GPL Ghostscript, which
 is AGPL v3. Its licence and a pointer to its source are installed beside it
-(`tools\gs\`).
+(`resources\tools\gs\` in the install folder).
