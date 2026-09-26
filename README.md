@@ -171,6 +171,16 @@ with the log.
   - **Stopping:** with phone access on, FileMinify keeps running when its
     window closes, so phones aren't cut off; closing the console window stops
     it. The same Start-menu entry turns phone access off again.
+- **Updates:** FileMinify asks GitHub about newer versions when it starts, at
+  most every 12 hours. When there is one, a bar offers **Update** (it
+  downloads the new setup and starts it; FileMinify restarts at the end),
+  **Later** (quiet for a week) or **Skip this version**. Either way the
+  header keeps an **Update available** button until it's done.
+  `FM_UPDATE_CHECK=0` in settings.env turns the check off.
+- **Missing tools:** if one is missing (declined in setup, or uninstalled
+  since), a bar says what won't work, and **Install** fetches it.
+- **When something goes wrong:** Start menu → **FileMinify log folder**. The
+  file in there is what to send whoever is helping.
 - **SmartScreen may warn on first run**, because the installer isn't
   code-signed. Choose *More info* → *Run anyway*.
 - **Settings** (for example `MAX_FILE_SIZE=200MB` or `PROCESS_TIMEOUT_MIN=60`) go

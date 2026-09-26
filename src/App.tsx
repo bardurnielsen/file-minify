@@ -6,7 +6,8 @@ import Layout from './components/layout/Layout';
 import FileProcessor from './components/file-processor/FileProcessor';
 import HowItWorks from './components/pages/HowItWorks';
 import { NavigationProvider, useNavigation } from './contexts/NavigationContext';
-import { fetchConfig } from './lib/api';
+import { fetchConfig, fetchUpdateStatus } from './lib/api';
+import { noticePutOff } from './lib/updateNotice';
 import { useFiles } from './hooks/useFiles';
 
 function AppContent() {
@@ -16,12 +17,20 @@ function AppContent() {
 
 function App() {
   // The upload limit is a server setting; ask once, keep the default otherwise.
-  // The Windows build also says here whether phones may connect.
+  // The Windows build also says here whether phones may connect, its version
+  // and any missing tools; knowing its version, it then asks about updates.
   useEffect(() => {
     void fetchConfig().then((config) => {
       if (!config) return;
-      useFiles.getState().setMaxFileBytes(config.maxFileBytes);
-      useFiles.getState().setPhone(config.phone ?? null);
+      const store = useFiles.getState();
+      store.setMaxFileBytes(config.maxFileBytes);
+      store.setPhone(config.phone ?? null);
+      store.setNative({ version: config.version ?? null, missingTools: config.missingTools ?? [] });
+      if (!config.version) return;
+      void fetchUpdateStatus().then((update) => {
+        const latest = update?.available ? update.latest?.version : undefined;
+        useFiles.getState().setUpdate(update, latest ? noticePutOff(latest) : false);
+      });
     });
   }, []);
 

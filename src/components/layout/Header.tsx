@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Moon, Smartphone, Sun } from 'lucide-react';
+import { ArrowUpCircle, Moon, Smartphone, Sun } from 'lucide-react';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useTheme } from '../theme-provider';
 import { cn } from '../../lib/format';
@@ -38,6 +38,9 @@ const Header: React.FC = () => {
   const { setTheme } = useTheme();
   const resolved = useResolvedTheme();
   const phone = useFiles((s) => s.phone);
+  // Stays while a newer version exists, even with the notice put off, so an
+  // update is always one click away (Notices.tsx).
+  const updateAvailable = useFiles((s) => !!s.update?.available);
   const [phoneOpen, setPhoneOpen] = useState(() =>
     new URLSearchParams(window.location.search).has(PHONE_PARAM)
   );
@@ -66,6 +69,17 @@ const Header: React.FC = () => {
         </button>
 
         <nav className="flex items-center gap-1">
+          {updateAvailable && (
+            <button
+              type="button"
+              onClick={() => useFiles.getState().setUpdateNoticeHidden(false)}
+              className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium text-emerald-700 transition-colors hover:bg-emerald-100/70 focus-ring dark:text-emerald-400 dark:hover:bg-emerald-950/60"
+            >
+              <ArrowUpCircle className="h-4 w-4" />
+              <span className="hidden sm:inline">Update available</span>
+              <span className="sm:hidden">Update</span>
+            </button>
+          )}
           {phone && (
             <button
               type="button"

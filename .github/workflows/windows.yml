@@ -68,6 +68,7 @@ jobs:
       - name: Build the installer
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="${GITHUB_REF_NAME#v}"; else v="0.0.${GITHUB_RUN_NUMBER}"; fi
+          echo "BUILT_VERSION=$v" >> "$GITHUB_ENV"
           windows/build.sh "$v"
 
       # Kept even if a later step fails: it is what to try on a real PC.
@@ -93,7 +94,9 @@ jobs:
       - name: Start it and run the smoke suite
         run: |
           app="$LOCALAPPDATA/Programs/FileMinify"
-          FM_NO_BROWSER=1 "$app/node.exe" "$app/launcher.js" > app.log 2>&1 &
+          # FM_VERSION is set only to show the launcher ignores an inherited one
+          # (setup passes its environment on after an in-app update).
+          FM_NO_BROWSER=1 FM_VERSION=inherited "$app/node.exe" "$app/launcher.js" > app.log 2>&1 &
           for i in $(seq 1 60); do
             health=$(curl -fsS 'http://localhost:3051/api/health?tools' 2>curl.err) && break
             sleep 2
@@ -102,6 +105,21 @@ jobs:
           [ -n "$health" ] || { echo "the app never came up:"; cat curl.err; exit 1; }
           if grep -q null <<<"$health"; then echo "a tool was not found"; exit 1; fi
           backend/test/smoke.sh http://localhost:3051/api
+
+      # The endpoints that start programs (backend/routes/native.js) answer
+      # only the app on this PC; checked here without starting anything.
+      - name: Native endpoints stay the PC's own
+        run: |
+          code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
+          update=$(curl -fsS http://localhost:3051/api/native/update); echo "$update"
+          grep -q '"available":' <<<"$update"
+          [ "$(code -X POST -H 'X-FileMinify: 1' -H 'Origin: http://evil.example' http://localhost:3051/api/native/update)" = 403 ]
+          [ "$(code -X POST -H 'X-FileMinify: 1' -H 'Host: evil.example:3051' http://localhost:3051/api/native/tools)" = 403 ]
+          [ "$(code -X POST -H 'X-FileMinify: 1' -H "Host: $(hostname):3051" http://localhost:3051/api/native/tools)" = 404 ]
+          [ "$(code -X POST http://localhost:3051/api/native/tools)" = 404 ]
+          # The version is the installed one (version.txt), never an inherited FM_VERSION.
+          config=$(curl -fsS http://localhost:3051/api/config); echo "$config"
+          grep -qF "\"version\":\"$BUILT_VERSION\"" <<<"$config"
 
       # The second lock behind the pinned decoders: the policy the launcher
       # points ImageMagick at must actually be in force.

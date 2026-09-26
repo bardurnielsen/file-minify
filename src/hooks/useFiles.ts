@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { FileItem, MergeState, PhoneAccess, Tier } from '../types';
+import { FileItem, MergeState, MissingTool, PhoneAccess, Tier, UpdateStatus } from '../types';
 import { MAX_FILE_BYTES } from '../processing';
 
 const EMPTY_MERGE: MergeState = { status: 'idle', order: [], excluded: [], name: 'merged.pdf' };
@@ -16,6 +16,15 @@ interface FileStore {
   /** The Windows build, on the PC itself (GET /config); null everywhere else. */
   phone: PhoneAccess | null;
   setPhone: (phone: PhoneAccess | null) => void;
+  /** Also the Windows build's: its version, what it's missing, and updates. */
+  version: string | null;
+  missingTools: MissingTool[];
+  setNative: (native: { version: string | null; missingTools: MissingTool[] }) => void;
+  update: UpdateStatus | null;
+  /** The update notice was put off ("Later") or its version skipped. */
+  updateNoticeHidden: boolean;
+  setUpdate: (update: UpdateStatus | null, noticeHidden: boolean) => void;
+  setUpdateNoticeHidden: (hidden: boolean) => void;
   setDefaultTier: (tier: Tier) => void;
   addFiles: (newFiles: FileItem[]) => void;
   removeFile: (id: string) => void;
@@ -35,6 +44,13 @@ export const useFiles = create<FileStore>()(
       setMaxFileBytes: (maxFileBytes) => set({ maxFileBytes }),
       phone: null,
       setPhone: (phone) => set({ phone }),
+      version: null,
+      missingTools: [],
+      setNative: ({ version, missingTools }) => set({ version, missingTools }),
+      update: null,
+      updateNoticeHidden: false,
+      setUpdate: (update, updateNoticeHidden) => set({ update, updateNoticeHidden }),
+      setUpdateNoticeHidden: (updateNoticeHidden) => set({ updateNoticeHidden }),
       setDefaultTier: (defaultTier) => set({ defaultTier }),
       addFiles: (newFiles) => set((state) => ({ files: [...state.files, ...newFiles] })),
       removeFile: (id) =>

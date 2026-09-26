@@ -106,6 +106,21 @@ one is missing, that installs FFmpeg, ImageMagick, LibreOffice and the VC++
 runtime through winget in a visible window (`InstallMissingTools` in the .iss).
 It never runs in a silent install: that is winget itself (tools already
 there) or CI.
+**`routes/native.js`** is mounted only in native mode and answers only the PC
+itself (a 404 to anything else). It starts programs, so it must stay that way.
+- `/native/update` (`utils/update.js`) compares `FM_VERSION` (the launcher reads
+  it from build.sh's version.txt) with this repo's latest GitHub release. Its
+  POST downloads the `FileMinify-Setup-x.y.z.exe` asset, checks its size and
+  starts it; setup then replaces the running app.
+- `/native/tools` runs winget for whatever `missingTools()` reports, in a
+  visible console.
+
+The app shows these as notices (`Notices.tsx`). "Later" and "Skip" live in
+localStorage (`lib/updateNotice.ts`), while the header's "Update available"
+stays. On a fresh start the launcher closes any orphaned FileMinify window,
+such as the one setup leaves behind during an update. The log also goes to
+`%LOCALAPPDATA%\FileMinify\logs`; the Start menu has an entry for that folder.
+`e2e/tests/native.spec.ts` fakes all of this for the Docker stack.
 `windows/build.sh` stages node.exe, the app and Ghostscript into an Inno Setup
 installer (`windows/fileminify.iss`, per-user). The winget manifest pulls in
 FFmpeg, ImageMagick, LibreOffice and the VC++ runtime. Ghostscript is bundled
@@ -248,6 +263,9 @@ What nginx did and native mode now does itself:
   blank page, which used to come back as a 95% saving. `needsPassword` spots
   its stderr message and the route answers 422 instead. PDFs that only
   restrict printing or editing still work. Merge reports the same case itself.
+- **The email sizes** on the video target size aim for 7 MB and 18 MB: email
+  grows an attachment by about a third (base64), so those fit a 10 MB and a
+  25 MB limit.
 - **`maxSize` is video only**: a target file size in MB. Images once treated it as
   a silent megapixel cap; that is gone.
 - **A missing `format` means `original`** on compression, same as sending it.

@@ -1,4 +1,4 @@
-import { DownloadRoute, PhoneAccess, ResultDetails, Route } from '../types';
+import { DownloadRoute, MissingTool, PhoneAccess, ResultDetails, Route, UpdateStatus } from '../types';
 
 const API = '/api';
 
@@ -134,9 +134,15 @@ export const mergeFiles = async (ids: string[]): Promise<MergeResponse> => {
 
 export interface ServerConfig {
   maxFileBytes: number;
-  /** Only from the Windows build, and only to the PC itself. */
+  /** The rest only from the Windows build, and only to the PC itself. */
   phone?: PhoneAccess;
+  version?: string;
+  missingTools?: MissingTool[];
+  /** A tools install window is open on the PC. */
+  installingTools?: boolean;
 }
+
+const MISSING_TOOLS: MissingTool[] = ['ffmpeg', 'imagemagick', 'libreoffice', 'ghostscript', 'vcruntime'];
 
 const parsePhone = (raw: unknown): PhoneAccess | undefined => {
   const phone = raw as Partial<PhoneAccess> | null | undefined;
@@ -154,8 +160,57 @@ export const fetchConfig = async (): Promise<ServerConfig | null> => {
     if (!response.ok) return null;
     const json = await response.json();
     if (!(Number(json?.maxFileBytes) > 0)) return null;
-    return { maxFileBytes: Number(json.maxFileBytes), phone: parsePhone(json.phone) };
+    return {
+      maxFileBytes: Number(json.maxFileBytes),
+      phone: parsePhone(json.phone),
+      version: typeof json.version === 'string' ? json.version : undefined,
+      missingTools: Array.isArray(json.missingTools)
+        ? json.missingTools.filter((t: unknown): t is MissingTool => MISSING_TOOLS.includes(t as MissingTool))
+        : undefined,
+      installingTools: json.installingTools === true,
+    };
   } catch {
     return null;
   }
+};
+
+// The Windows build's own endpoints want this on a POST: a header no other
+// page could send without a CORS preflight, which is never granted
+// (routes/native.js).
+const NATIVE_POST = { 'X-FileMinify': '1' };
+
+/** The Windows build: is there a newer release? Null when it can't say. */
+export const fetchUpdateStatus = async (): Promise<UpdateStatus | null> => {
+  try {
+    const response = await fetch(`${API}/native/update`);
+    if (!response.ok) return null;
+    const json = await response.json();
+    if (typeof json?.available !== 'boolean') return null;
+    return json as UpdateStatus;
+  } catch {
+    return null;
+  }
+};
+
+/** Download the newer setup and start it. Resolves once setup is running. */
+export const startUpdate = async (): Promise<void> => {
+  const response = await fetch(`${API}/native/update`, { method: 'POST', headers: NATIVE_POST });
+  if (!response.ok) throw new Error(`Update failed (${response.status})`);
+};
+
+/** Why installing the tools could not start: winget is missing, one is already running, or anything else. */
+export type ToolsInstallProblem = 'no-winget' | 'running' | 'failed';
+
+/** Install the missing tools, in a window of their own on the PC. Rejects with a ToolsInstallProblem. */
+export const installMissingTools = async (): Promise<void> => {
+  let response: Response;
+  try {
+    response = await fetch(`${API}/native/tools`, { method: 'POST', headers: NATIVE_POST });
+  } catch {
+    throw 'failed' satisfies ToolsInstallProblem;
+  }
+  const json = await response.json().catch(() => null);
+  if (json?.success === true) return;
+  if (json?.problem === 'no-winget' || json?.problem === 'running') throw json.problem as ToolsInstallProblem;
+  throw 'failed' satisfies ToolsInstallProblem;
 };

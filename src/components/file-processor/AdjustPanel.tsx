@@ -8,6 +8,13 @@ import FormatSelector from './FormatSelector';
 import OptionSlider from './OptionSlider';
 import TierControl from './TierControl';
 
+// Email grows an attachment by about a third on the way (base64), so a 10 MB
+// limit takes a file of about 7 MB, and 25 MB (Gmail, Outlook) about 18 MB.
+const EMAIL_SIZES = [
+  { limit: 10, target: 7 },
+  { limit: 25, target: 18 },
+];
+
 interface AdjustPanelProps {
   file: FileItem;
   onApply: (options: ProcessingOption) => void;
@@ -128,6 +135,7 @@ const AdjustPanel: React.FC<AdjustPanelProps> = ({ file, onApply, onClose, holdi
   const sizeMb = file.size / 1024 / 1024;
   const canTargetSize = file.type === 'video' && sizeMb >= 2;
   const targetMax = Math.max(1, Math.min(50, Math.ceil(sizeMb) - 1));
+  const emailSizes = EMAIL_SIZES.filter((e) => e.target <= targetMax);
   const unchanged = file.result
     ? sameRequest(file.type, draft, file.result.options)
     : sameRequest(file.type, draft, file.options) && file.status !== 'error';
@@ -207,7 +215,7 @@ const AdjustPanel: React.FC<AdjustPanelProps> = ({ file, onApply, onClose, holdi
             {canTargetSize && (
               <Field
                 label="Target size"
-                hint="Two-pass encode aimed at a file size. Quality then follows the target."
+                hint="Two-pass encode aimed at a file size. Quality then follows the target. The email sizes leave room for the third that email adds on the way."
               >
                 <div className="space-y-3 pt-1">
                   <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-700 dark:text-zinc-200">
@@ -225,6 +233,28 @@ const AdjustPanel: React.FC<AdjustPanelProps> = ({ file, onApply, onClose, holdi
                     />
                     Aim for a specific size instead
                   </label>
+                  {emailSizes.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Sizes for email">
+                      <span className="text-xs text-zinc-500 dark:text-zinc-400">For email:</span>
+                      {emailSizes.map((e) => (
+                        <button
+                          key={e.limit}
+                          type="button"
+                          aria-pressed={draft.targetSizeMb === e.target}
+                          onClick={() => patch({ targetSizeMb: e.target })}
+                          title={`Aims for ${e.target} MB, which fits a ${e.limit} MB email limit`}
+                          className={cn(
+                            'h-7 rounded-full border px-3 text-xs font-medium transition-colors focus-ring',
+                            draft.targetSizeMb === e.target
+                              ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900'
+                              : 'border-zinc-200 text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800'
+                          )}
+                        >
+                          {e.limit} MB limit
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {draft.targetSizeMb && (
                     <OptionSlider
                       value={draft.targetSizeMb}
