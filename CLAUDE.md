@@ -78,6 +78,10 @@ which Radix's `asChild` passes a ref through); don't reach for `forwardRef`.
 - `utils/run.js` — every external command goes through `run(name, args)`, which
   asks `utils/tools.js` for the binary. In Docker a name is itself; on Windows
   it is found on PATH, in winget's folders or in the usual install folders.
+  It remembers each running child, so `killAll()` can stop them (the whole
+  tree on Windows) when the desktop app quits.
+- `utils/desktop.js` — the desktop app's messages over `process.parentPort`
+  (see "Desktop app"); does nothing without it.
 - `utils/paths.js` — `TEMP_DIR`, the one place uploads and results live.
 
 ### Windows build (`windows/`, `packaging/winget/`)
@@ -106,14 +110,12 @@ one is missing, that installs FFmpeg, ImageMagick, LibreOffice and the VC++
 runtime through winget in a visible window (`InstallMissingTools` in the .iss).
 It never runs in a silent install: that is winget itself (tools already
 there) or CI.
-**`routes/native.js`** is mounted only in native mode and answers only the PC
-itself (a 404 to anything else). It starts programs, so it must stay that way.
-- `/native/update` (`utils/update.js`) compares `FM_VERSION` (the launcher reads
-  it from build.sh's version.txt) with this repo's latest GitHub release. Its
-  POST downloads the `FileMinify-Setup-x.y.z.exe` asset, checks its size and
-  starts it; setup then replaces the running app.
-- `/native/tools` runs winget for whatever `missingTools()` reports, in a
-  visible console.
+In 1.0.x, `routes/native.js` (`/native/update`, `/native/tools`) checked for
+and started an update and ran winget, answering only the PC itself. 2.0
+removed it along with `utils/update.js`: no HTTP endpoint starts a program.
+The update is the desktop app's own (electron-updater), and the tools install
+(`installTools()` in `utils/tools.js`, winget in a visible console for
+whatever `missingTools()` reports) is asked for over `process.parentPort`.
 
 The app shows these as notices (`Notices.tsx`). "Later" and "Skip" live in
 localStorage (`lib/updateNotice.ts`), while the header's "Update available"
