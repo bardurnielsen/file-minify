@@ -8,8 +8,11 @@ const log = require('./log.cjs');
 // getWindow(), getOrigin(): the app window and its origin, as they are now.
 // handlers: { updateStatus, startUpdate, installTools, setPhoneAccess(on),
 //   openLogFolder, showDownload(id), setBusy(busy) }
-const register = ({ getWindow, getOrigin, handlers }) => {
+const register = ({ getWindow, getOrigin, serverUp, handlers }) => {
   const trusted = (event) => {
+    // While our server is down (restarting, say) another program could hold
+    // the port and serve its own page at the app's origin: no bridge then.
+    if (!serverUp()) return false;
     const win = getWindow();
     if (!win || event.sender !== win.webContents) return false;
     const frame = event.senderFrame;

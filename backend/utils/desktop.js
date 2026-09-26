@@ -78,4 +78,25 @@ const attach = (server) => {
   });
 };
 
-module.exports = { inDesktop, send, attach };
+// Work in progress, counted as processing requests still being answered:
+// uploads, compressions, conversions and merges, from the PC's own window or
+// from a phone. The app keeps Windows awake while there is any, and asks
+// before quitting. Only the change between idle and busy is sent.
+const JOB = /^\/(api\/)?(upload|compression|conversion|merge)(\/|$)/;
+let jobs = 0;
+
+const jobDone = () => {
+  jobs -= 1;
+  if (jobs === 0) send({ type: 'busy', busy: false });
+};
+
+const trackJobs = (req, res, next) => {
+  if (parentPort && req.method === 'POST' && JOB.test(req.path)) {
+    jobs += 1;
+    if (jobs === 1) send({ type: 'busy', busy: true });
+    res.once('close', jobDone);
+  }
+  next();
+};
+
+module.exports = { inDesktop, send, attach, trackJobs };

@@ -61,9 +61,11 @@ const readState = () => {
     const s = JSON.parse(fs.readFileSync(stateFile(), 'utf8'));
     const nums = ['x', 'y', 'width', 'height'].every((k) => Number.isFinite(s[k]));
     if (!nums || s.width < 200 || s.height < 200) return null;
+    // The title bar must be on a screen, with room to grab it: a window whose
+    // top sat on a monitor that has since been unplugged can't be moved back.
     const onScreen = screen.getAllDisplays().some(({ workArea: a }) =>
-      Math.min(s.x + s.width, a.x + a.width) - Math.max(s.x, a.x) >= 64 &&
-      Math.min(s.y + s.height, a.y + a.height) - Math.max(s.y, a.y) >= 32);
+      s.y >= a.y && s.y < a.y + a.height - 32 &&
+      Math.min(s.x + s.width, a.x + a.width) - Math.max(s.x, a.x) >= 64);
     return onScreen ? s : null;
   } catch {
     return null;
@@ -216,9 +218,18 @@ const open = ({ url, preload }) => {
   contents.on('will-redirect', guard);
   contents.on('will-attach-webview', (event) => event.preventDefault());
 
+  // A page that stopped is loaded again, a few times: one that dies on every
+  // load (out of memory, say) would otherwise loop for ever.
+  let reloads = 0;
   contents.on('render-process-gone', (e, details) => {
     log.error(`The window's page stopped: ${details.reason}`);
-    if (details.reason !== 'clean-exit' && getWindow() === w) contents.reload();
+    if (details.reason === 'clean-exit' || getWindow() !== w) return;
+    reloads += 1;
+    if (reloads > 3) {
+      log.error('The page keeps stopping; not loading it again');
+      return;
+    }
+    contents.reload();
   });
   contents.on('did-fail-load', (e, code, description, failedUrl, isMainFrame) => {
     if (isMainFrame) log.error(`Loading ${failedUrl} failed: ${description} (${code})`);

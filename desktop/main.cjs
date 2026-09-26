@@ -10,7 +10,7 @@
 // icon is the way back in, and out.
 const fs = require('fs');
 const path = require('path');
-const { app, dialog, Menu, shell } = require('electron');
+const { app, dialog, Menu, powerSaveBlocker, shell } = require('electron');
 const config = require('./lib/config.cjs');
 
 // Everything FileMinify keeps lives in %LOCALAPPDATA%\FileMinify, Electron's
@@ -58,7 +58,63 @@ let quitting = false; // app.quit() is under way: nothing hides or asks any more
 let serverStopped = false;
 let stopping = null;
 let busy = false; // the page says files are uploading, queued or processing
+let serverBusy = false; // the server is answering processing requests (a phone's too)
 let asking = false;
+const isBusy = () => busy || serverBusy;
+
+// Keep Windows from sleeping while there is work in progress: a long video
+// sent from a phone would otherwise be cut off when the PC dozes off. The
+// screen may still turn off. Released a little after the last job, so the
+// gaps between a video's two passes, or between files, don't let go of it.
+const AWAKE_GRACE_MS = 30_000;
+let awakeId = null;
+let releaseTimer = null;
+const updateAwake = () => {
+  if (isBusy()) {
+    clearTimeout(releaseTimer);
+    releaseTimer = null;
+    if (awakeId === null) {
+      awakeId = powerSaveBlocker.start('prevent-app-suspension');
+      log.info('Working: keeping Windows awake');
+    }
+  } else if (awakeId !== null && releaseTimer === null) {
+    releaseTimer = setTimeout(() => {
+      releaseTimer = null;
+      if (isBusy() || awakeId === null) return;
+      powerSaveBlocker.stop(awakeId);
+      awakeId = null;
+      log.info('Idle: Windows may sleep again');
+    }, AWAKE_GRACE_MS);
+  }
+};
+
+// Start with Windows (the tray's checkbox): a login item that starts
+// FileMinify quietly in the tray (--hidden), so a PC phones rely on has it
+// running after every restart. The uninstaller removes the entry
+// (build/installer.nsh); its name is fixed so it can.
+const LOGIN_ITEM = { path: process.execPath, args: ['--hidden'], name: 'FileMinify' };
+// Read back by its name: getLoginItemSettings' openAtLogin looks at the entry
+// named after the AppUserModelId, not ours, so it would always say false and
+// the checkbox could never be turned off.
+const startsWithWindows = () => {
+  try {
+    const { launchItems = [] } = app.getLoginItemSettings(LOGIN_ITEM);
+    return launchItems.some((item) => item.name === LOGIN_ITEM.name && item.enabled);
+  } catch {
+    return false;
+  }
+};
+const setStartWithWindows = (on) => {
+  try {
+    app.setLoginItemSettings({ ...LOGIN_ITEM, openAtLogin: on });
+    log.info(`Start with Windows ${on ? 'on' : 'off'}`);
+  } catch (err) {
+    log.warn(`Could not change Start with Windows: ${err.message}`);
+  }
+  tray.update({ phone: phoneOn(), autostart: startsWithWindows() });
+};
+// Started by that login item: tray only until someone opens the window.
+const startHidden = process.argv.includes('--hidden');
 
 const LOCAL_HOSTS = ['127.0.0.1', 'localhost', '::1'];
 const phoneOn = () => {
@@ -74,7 +130,7 @@ const markQuitting = () => {
 
 // Ask before stopping work in progress. True to go ahead.
 const confirmBusy = async (message, detail, button) => {
-  if (!busy) return true;
+  if (!isBusy()) return true;
   const options = {
     type: 'warning',
     title: 'FileMinify',
@@ -106,6 +162,13 @@ const requestQuit = async () => {
 
 const openWindow = (page = '/') => {
   const win = appWindow.open({ url: appUrl(page), preload: PRELOAD });
+  // A reloaded or crashed page starts idle; it says so again when busy.
+  win.webContents.on('did-start-navigation', (e) => {
+    if (e.isMainFrame && !e.isSameDocument) {
+      busy = false;
+      updateAwake();
+    }
+  });
   win.on('close', (event) => {
     if (quitting) return;
     event.preventDefault();
@@ -128,10 +191,16 @@ const openWindow = (page = '/') => {
   return win;
 };
 
+// The first-run tools question, asked once however the window comes up.
+let firstRunAsked = null;
+const askFirstRun = () => (firstRunAsked ??= firstRun());
+
 const showWindow = () => {
   if (appWindow.show()) return;
   if (settings.noWindow || !appWindow.getOrigin()) return;
   openWindow();
+  // Started with Windows: the tools question comes when the window first opens.
+  void askFirstRun();
 };
 
 // Phone access: save it, restart the server with it, and reload the window
@@ -142,7 +211,8 @@ const switchPhoneAccess = async (on) => {
   if (on !== phoneOn()) {
     const go = await confirmBusy('Files are still being processed.',
       'Changing phone access restarts FileMinify, which stops them. Change it anyway?', 'Change it');
-    if (!go) throw new Error('Cancelled.');
+    // Kept as it was: the page reads /config again and shows it unchanged.
+    if (!go) return;
     const before = config.readSettings().FM_HOST || null;
     config.saveHost(on ? '0.0.0.0' : null);
     try {
@@ -157,6 +227,9 @@ const switchPhoneAccess = async (on) => {
       }
       throw err;
     }
+    // settings.env can still set it another way (a line saveHost couldn't
+    // replace): say so rather than claim it changed.
+    if (phoneOn() !== on) throw new Error(`Phone access is still ${on ? 'off' : 'on'}; check settings.env.`);
     log.info(`Phone access ${on ? 'on' : 'off'}`);
   }
   // After the reply has reached the page.
@@ -216,8 +289,14 @@ const firstRun = async () => {
     const win = appWindow.getWindow();
     if (win && !win.isVisible()) {
       await new Promise((resolve) => {
-        win.once('show', resolve);
-        setTimeout(resolve, 15_000);
+        const timer = setTimeout(() => {
+          win.removeListener('show', resolve);
+          resolve();
+        }, 15_000);
+        win.once('show', () => {
+          clearTimeout(timer);
+          resolve();
+        });
       });
     }
     const options = {
@@ -232,7 +311,8 @@ const firstRun = async () => {
       noLink: true,
     };
     const parent = appWindow.getWindow();
-    const { response } = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options);
+    const shown = parent?.isVisible() ? parent : null;
+    const { response } = shown ? await dialog.showMessageBox(shown, options) : await dialog.showMessageBox(options);
     log.info(`First run: tools missing (${missing.join(', ')}); ${response === 0 ? 'installing' : 'not now'}`);
     if (response === 0) {
       const result = await installTools();
@@ -261,7 +341,7 @@ app.on('child-process-gone', (event, details) => {
   writeMarker(MARKERS.gpu, details.reason);
   // Relaunching would stop the work in progress; the marker is enough for
   // the next start.
-  if (busy) {
+  if (isBusy()) {
     log.warn('GPU failed while busy: GPU acceleration is off from the next start');
     return;
   }
@@ -269,6 +349,8 @@ app.on('child-process-gone', (event, details) => {
   log.warn('GPU failed: starting again without GPU acceleration');
   markQuitting();
   server.stop().finally(() => {
+    // app.exit skips before-quit, which would otherwise take the tray icon.
+    tray.destroy();
     app.relaunch();
     app.exit(0);
   });
@@ -316,6 +398,10 @@ if (!app.requestSingleInstanceLock()) {
       `${gpuOff ? ', GPU acceleration off' : ''}${settings.noWindow ? ', no window' : ''}`);
 
     server.configure({ resources: RESOURCES });
+    server.onBusy((value) => {
+      serverBusy = value;
+      updateAwake();
+    });
     let address;
     try {
       address = await server.start();
@@ -336,37 +422,41 @@ if (!app.requestSingleInstanceLock()) {
     ipc.register({
       getWindow: appWindow.getWindow,
       getOrigin: appWindow.getOrigin,
+      serverUp: () => server.current() !== null,
       handlers: {
         updateStatus: () => updater.status(),
-        startUpdate: () => updater.start(),
+        startUpdate: async () => {
+          const go = await confirmBusy('Files are still being processed.',
+            'Updating restarts FileMinify, which stops them. Update anyway?', 'Update');
+          if (!go) throw new Error('Cancelled.');
+          return updater.start();
+        },
         installTools,
         setPhoneAccess,
         openLogFolder,
         showDownload: async (id) => appWindow.showDownload(id),
         setBusy: (value) => {
           busy = value;
+          updateAwake();
         },
       },
     });
 
-    if (!settings.noWindow) {
-      const win = openWindow();
-      // A reloaded or crashed page starts idle; it says so again when busy.
-      win.webContents.on('did-start-navigation', (e) => {
-        if (e.isMainFrame && !e.isSameDocument) busy = false;
-      });
-    }
+    if (!settings.noWindow && !startHidden) openWindow();
     tray.create({
       open: showWindow,
       togglePhone: (on) => {
         setPhoneAccess(on).then(showWindow, (err) => log.warn(`Phone access from the tray: ${err.message}`));
       },
       openLogs: () => void openLogFolder(),
+      toggleAutostart: (on) => setStartWithWindows(on),
       quit: () => void requestQuit(),
     });
-    tray.update({ phone: phoneOn() });
+    tray.update({ phone: phoneOn(), autostart: startsWithWindows() });
 
-    if (!settings.noWindow) await firstRun();
+    // Started with Windows: stay in the tray; the question about missing
+    // tools waits until someone opens FileMinify themselves.
+    if (!settings.noWindow && !startHidden) await askFirstRun();
   }).catch((err) => {
     log.error('Start-up failed:', err);
     dialog.showErrorBox('FileMinify could not start', String(err?.message ?? err));

@@ -58,7 +58,7 @@
     ; travel in the environment, so a quote in one needs no escaping.
     System::Call 'Kernel32::SetEnvironmentVariable(t "FM_OLD_NODE", t "$fmOld\node.exe")i'
     System::Call 'Kernel32::SetEnvironmentVariable(t "FM_OLD_TOOLS", t "$fmOld\tools\")i'
-    nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process | Where-Object { ($$_.ExecutablePath -and ($$_.ExecutablePath -eq $$env:FM_OLD_NODE -or $$_.ExecutablePath.StartsWith($$env:FM_OLD_TOOLS, [StringComparison]::OrdinalIgnoreCase))) -or ($$_.Name -eq 'msedge.exe' -and $$_.CommandLine -like '*\FileMinify\window*') } | Invoke-CimMethod -MethodName Terminate | Out-Null"`
+    nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process | Where-Object { ($$_.ExecutablePath -and ($$_.ExecutablePath -eq $$env:FM_OLD_NODE -or $$_.ExecutablePath.StartsWith($$env:FM_OLD_TOOLS, [StringComparison]::OrdinalIgnoreCase))) -or ($$_.Name -eq 'msedge.exe' -and $$_.CommandLine -match '--user-data-dir=.*\\FileMinify\\window(\x22|\s|$$)') } | Invoke-CimMethod -MethodName Terminate | Out-Null"`
     Pop $0
 
     ; A killed process lets go of its exe a moment later.
@@ -77,8 +77,13 @@
       ; Its own folders, then its files by name; nothing else in the folder.
       ; tools and magick only by what 1.0.x put there, since a user who
       ; installed it somewhere of their own may have folders of those names.
-      RMDir /r "$fmOld\backend"
-      RMDir /r "$fmOld\dist"
+      ; Only if they look like 1.0.x's: a stale key could point at a reused folder.
+      ${If} ${FileExists} "$fmOld\backend\server.js"
+        RMDir /r "$fmOld\backend"
+      ${EndIf}
+      ${If} ${FileExists} "$fmOld\dist\index.html"
+        RMDir /r "$fmOld\dist"
+      ${EndIf}
       RMDir /r "$fmOld\tools\gs"
       RMDir "$fmOld\tools"
       Delete "$fmOld\magick\policy.xml"
@@ -138,5 +143,9 @@
   ${ifNot} ${isUpdated}
     RMDir /r "$LOCALAPPDATA\FileMinify"
     RMDir /r "$LOCALAPPDATA\fileminify-app-updater"
+    ; "Start with Windows" (desktop/main.cjs, LOGIN_ITEM: the value's name is
+    ; fixed as FileMinify so it can be found here). An update keeps it.
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "FileMinify"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "FileMinify"
   ${endIf}
 !macroend

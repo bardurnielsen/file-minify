@@ -28,6 +28,10 @@ const pending = new Map();
 // Processes whose exit is expected (stop(), a failed listen): not crashes.
 const expected = new WeakSet();
 const readyListeners = new Set();
+const busyListeners = new Set();
+const tellBusy = (busy) => {
+  for (const cb of busyListeners) cb(busy);
+};
 
 const configure = ({ resources }) => {
   resourcesDir = resources;
@@ -106,6 +110,8 @@ const start = () => {
         log.info(`The server is listening on ${address.host}:${address.port}`);
         settle(resolve, address);
         for (const cb of readyListeners) cb(address);
+      } else if (message?.type === 'busy') {
+        tellBusy(message.busy === true);
       } else if (message?.type === 'listen-error') {
         log.error(`The server could not listen: ${message.code}`);
         // It exits by itself after saying so.
@@ -122,6 +128,7 @@ const start = () => {
 
     proc.once('exit', (code) => {
       log.info(`The server exited (${code})`);
+      tellBusy(false); // whatever it was doing has stopped
       if (child === proc) {
         child = null;
         address = null;
@@ -252,4 +259,11 @@ const crashed = async (code) => {
 
 const current = () => address;
 
-module.exports = { configure, setQuitting, onReady, start, request, stop, killNow, restart, failed, current };
+// cb(busy): the server started or finished processing (utils/desktop.js,
+// trackJobs), whoever asked for it - the PC's window or a phone.
+const onBusy = (cb) => {
+  busyListeners.add(cb);
+  return () => busyListeners.delete(cb);
+};
+
+module.exports = { configure, setQuitting, onReady, onBusy, start, request, stop, killNow, restart, failed, current };

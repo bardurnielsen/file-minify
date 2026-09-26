@@ -1,3 +1,4 @@
+const path = require('path');
 const { execFile, spawnSync } = require('child_process');
 const { promisify } = require('util');
 const { resolveTool } = require('./tools');
@@ -46,14 +47,16 @@ const run = (file, args, options = {}) => {
 // On Windows kill() ends only the process itself, and soffice.com leaves its
 // soffice.bin running (holding LibreOffice's profile lock), so the whole tree
 // goes, through taskkill.
+// One taskkill for all of them, by full path (not found through the working
+// directory), so shutting down stays within the app's few seconds' grace.
 const killAll = () => {
-  for (const child of running) {
-    if (process.platform === 'win32' && child.pid) {
-      spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'],
-        { stdio: 'ignore', windowsHide: true, timeout: 5000 });
-    }
-    child.kill('SIGKILL');
+  const pids = [...running].map((child) => child.pid).filter(Boolean);
+  if (process.platform === 'win32' && pids.length > 0) {
+    const taskkill = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe');
+    spawnSync(taskkill, [...pids.flatMap((pid) => ['/pid', String(pid)]), '/t', '/f'],
+      { stdio: 'ignore', windowsHide: true, timeout: 5000 });
   }
+  for (const child of running) child.kill('SIGKILL');
   running.clear();
 };
 

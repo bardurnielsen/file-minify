@@ -7,6 +7,7 @@ const log = require('./log.cjs');
 let tray = null;
 let actions = null;
 let phoneOn = false;
+let autostartOn = false;
 
 // tray.png is 16 px; Electron picks tray@1.5x.png and tray@2x.png beside it
 // for scaled displays.
@@ -22,13 +23,14 @@ const render = () => {
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Open FileMinify', click: () => actions.open() },
     { label: 'Phone access', type: 'checkbox', checked: phoneOn, click: () => actions.togglePhone(!phoneOn) },
+    { label: 'Start with Windows', type: 'checkbox', checked: autostartOn, click: () => actions.toggleAutostart(!autostartOn) },
     { label: 'Open log folder', click: () => actions.openLogs() },
     { type: 'separator' },
     { label: 'Quit FileMinify', click: () => actions.quit() },
   ]));
 };
 
-// actions: { open, togglePhone(on), openLogs, quit }
+// actions: { open, togglePhone(on), toggleAutostart(on), openLogs, quit }
 const create = (handlers) => {
   actions = handlers;
   tray = new Tray(icon());
@@ -40,8 +42,10 @@ const create = (handlers) => {
 
 // Phone access changed (or a switch was cancelled: the checkbox ticks itself
 // on click, so the menu is rebuilt from the real state either way).
-const update = ({ phone }) => {
-  phoneOn = Boolean(phone);
+// Only what is given changes.
+const update = ({ phone, autostart }) => {
+  if (phone !== undefined) phoneOn = Boolean(phone);
+  if (autostart !== undefined) autostartOn = Boolean(autostart);
   render();
 };
 

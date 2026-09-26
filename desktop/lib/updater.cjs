@@ -44,7 +44,11 @@ const configure = (mainSettings, hooks = {}) => {
     updater.setFeedURL({ provider: 'generic', url: settings.updateFeed });
   }
   // Without a listener, EventEmitter throws on 'error'.
-  updater.on('error', (err) => log.warn(`Updater: ${err?.message ?? err}`));
+  updater.on('error', (err) => {
+    log.warn(`Updater: ${err?.message ?? err}`);
+    // Including an installer that could not be started: Update can be tried again.
+    starting = null;
+  });
   updater.on('download-progress', (p) => progressTo(Math.max(0, Math.min(100, Number(p.percent) || 0))));
 
   // Look again now and then, so a long-running app hears of a new release.
@@ -98,8 +102,10 @@ const start = () => {
     await updater.downloadUpdate();
     progressTo(100);
     log.info(`Downloaded FileMinify ${known.latest.version}; installing`);
+    // quitAndInstall quits only if the installer started; before-quit marks
+    // the app as quitting then. Marking it here first would leave a
+    // half-quit app behind (no close-to-tray, no crash restarts) if it didn't.
     setTimeout(() => {
-      beforeInstall();
       updater.quitAndInstall(false, true);
     }, INSTALL_DELAY_MS);
   })().catch((err) => {

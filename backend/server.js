@@ -50,7 +50,9 @@ app.use(helmet(STATIC_DIR ? {
       defaultSrc: ["'self'"],
       imgSrc: ["'self'", 'data:', 'blob:'],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
+      // No inline script: the desktop app's window has the bridge
+      // (window.fileminify), and the app has no inline script to allow.
+      scriptSrc: ["'self'"],
       connectSrc: ["'self'"],
     },
   },
@@ -197,6 +199,9 @@ api.get('/config', async (req, res) => {
   });
 });
 
+// In the desktop app, work in progress is counted (utils/desktop.js):
+// Windows is kept awake while there is any. Elsewhere it only calls next().
+app.use(desktop.trackJobs);
 app.use(api);
 
 if (STATIC_DIR) {
@@ -233,12 +238,16 @@ const server = app.listen(PORT, HOST, (err) => {
 desktop.attach(server);
 
 // In the desktop app a port already in use (EADDRINUSE) is reported to the
-// app, which says so, rather than crashing. Elsewhere it throws, as before.
+// app, which says so, rather than crashing. Elsewhere it throws. (Before
+// this, Express 5 handed the error to the listen callback, which logged
+// "Server running" and carried on listening on nothing.) An error after a
+// good listen is a crash like any other, which the app restarts.
 server.on('error', (err) => {
-  if (!desktop.inDesktop) throw err;
+  if (!desktop.inDesktop || server.listening) throw err;
   logger.error(`Server could not start: ${err.message}`);
   desktop.send({ type: 'listen-error', code: err.code || 'UNKNOWN' });
-  process.exit(1);
+  // A moment for the message to reach the app before this process goes.
+  setTimeout(() => process.exit(1), 200);
 });
 
 // In Docker nginx takes in the whole upload before passing it on, quickly.

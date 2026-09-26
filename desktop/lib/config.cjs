@@ -14,13 +14,19 @@ const LOG_DIR = path.join(DATA_DIR, 'logs');
 
 // KEY=VALUE lines, exactly as launcher.js read them: trimmed, blank lines,
 // #comments and lines without '=' skipped, split at the first '='.
+// A line's key, as Windows treats environment names: trimmed, and the same
+// whatever its case. "fm_host = 0.0.0.0" is FM_HOST too, both when read and
+// when saveHost replaces it; otherwise turning phone access off could leave
+// a hand-edited line that keeps the server on the network.
+const keyOf = (line) => line.slice(0, line.indexOf('=')).trim().toUpperCase();
+
 const parseSettings = (text) =>
   Object.fromEntries(
     text
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter((line) => line && !line.startsWith('#') && line.includes('='))
-      .map((line) => [line.slice(0, line.indexOf('=')).trim(), line.slice(line.indexOf('=') + 1).trim()])
+      .map((line) => [keyOf(line), line.slice(line.indexOf('=') + 1).trim()])
   );
 
 const readSettings = (file = SETTINGS) => {
@@ -41,9 +47,9 @@ const saveHost = (host, file = SETTINGS) => {
   } catch {
     // no settings yet
   }
-  lines = lines.filter((line) => line.trim() && !line.trim().startsWith('FM_HOST='));
+  lines = lines.filter((line) => line.trim() && !(line.includes('=') && keyOf(line.trim()) === 'FM_HOST'));
   if (lines.length === 0) {
-    lines.push('# FileMinify settings, one KEY=value per line. The installer manages FM_HOST.');
+    lines.push('# FileMinify settings, one KEY=value per line. FileMinify manages FM_HOST.');
   }
   if (host) lines.push(`FM_HOST=${host}`);
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -66,6 +72,9 @@ const buildServerEnv = ({ resources, version, env = process.env, settings = read
   return {
     ...base,
     NODE_ENV: 'production',
+    // The backend lets origins named here upload and read results. Never
+    // inherited from the user's environment: settings.env may set it.
+    CORS_ORIGIN: '',
     // The same port as the ship's server, so the address is familiar.
     PORT: '3051',
     // Only this PC unless settings.env says otherwise: the app has no login.

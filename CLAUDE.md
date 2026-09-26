@@ -194,7 +194,10 @@ pinned exactly. This is the contract the pieces are built against:
     and every 12 h (cached 12 h). Any check error means "no update".
 - **Messages over `process.parentPort`** (`backend/utils/desktop.js`, which
   does nothing outside the app):
-  - Server to main: `{type:'listening',host,port}`, `{type:'listen-error',code}`.
+  - Server to main: `{type:'listening',host,port}`, `{type:'listen-error',code}`,
+    and `{type:'busy',busy}` when processing requests in flight (`trackJobs`:
+    uploads, compressions, conversions, merges, from the window or a phone)
+    go from none to some and back.
   - Main to server: `{type:'install-tools',id}` gets
     `{type:'install-tools',id,outcome,packages}`; `{type:'missing-tools',id}`
     gets `{type:'missing-tools',id,missing}`; `{type:'shutdown'}` closes the
@@ -223,6 +226,14 @@ pinned exactly. This is the contract the pieces are built against:
     or tools install and points to the app's window or its tray icon.
   - `e2e/tests/desktop-fake.ts` fakes the bridge for the Docker stack;
     `DESKTOP_BRIDGE_KEYS` there is what the real preload must expose.
+- **Busy work and sleep.** "Busy" is the page's own work (`setBusy`) or the
+  server's `busy`. While busy, Windows is kept awake
+  (`powerSaveBlocker 'prevent-app-suspension'`, released 30 s after the
+  last job), and quitting, updating or switching phone access asks first.
+- **Start with Windows** (a tray checkbox): a login item named `FileMinify`
+  that runs `FileMinify.exe --hidden`, which starts in the tray only; the
+  tools question waits until the window first opens. It is read back by its
+  name (`launchItems`), and the uninstaller deletes the Run value.
 - **settings.env keys added:** `FM_UPDATE_PRERELEASE=1` (testers get release
   candidates), `FM_DISABLE_GPU=1`, `FM_UPDATE_CHECK=0` (never look). For
   CI only: `FM_UPDATE_FEED` (a generic feed; `http://127.0.0.1` or
