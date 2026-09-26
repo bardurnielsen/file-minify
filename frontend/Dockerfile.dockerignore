@@ -9,6 +9,9 @@
 dist
 backend
 e2e
+windows
+packaging
+build
 *.md
 LICENSE
 docker-compose.yml

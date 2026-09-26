@@ -1,5 +1,6 @@
 const { execFile } = require('child_process');
 const { promisify } = require('util');
+const { resolveTool } = require('./tools');
 
 const execFilePromise = promisify(execFile);
 
@@ -16,12 +17,17 @@ const RUN = {
   timeout: (timeoutMin > 0 ? timeoutMin : 5) * 60 * 1000,
   maxBuffer: 16 * 1024 * 1024,
   killSignal: 'SIGKILL',
+  // On Windows each tool would otherwise flash up a console window of its own.
+  windowsHide: true,
 };
 
 // Every external tool goes through here. execFile spawns the binary directly
 // with an argv array and no shell, so quotes, $(...) and ; in a path or a
 // format are inert data rather than syntax - the injection class is gone
 // rather than filtered. Validation upstream is now defence in depth.
-const run = (file, args) => execFilePromise(file, args, RUN);
+// `file` is a tool name (utils/tools.js finds the binary); `options` adds to
+// the shared ones, e.g. a working directory.
+const run = (file, args, options = {}) =>
+  execFilePromise(resolveTool(file), args, { ...RUN, ...options });
 
 module.exports = { run };

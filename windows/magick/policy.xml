@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policymap [
+  <!ELEMENT policymap (policy)*>
+  <!ATTLIST policymap xmlns CDATA #FIXED "">
+  <!ELEMENT policy EMPTY>
+  <!ATTLIST policy xmlns CDATA #FIXED "" domain NMTOKEN #REQUIRED
+    name NMTOKEN #IMPLIED pattern CDATA #IMPLIED rights NMTOKEN #IMPLIED
+    stealth NMTOKEN #IMPLIED value CDATA #IMPLIED>
+]>
+<!--
+  FileMinify's ImageMagick policy on Windows, found through MAGICK_CONFIGURE_PATH
+  (windows/launcher.js). The backend already names the decoder for every input
+  (magickInput in backend/utils/converters.js); this is the second lock. These
+  decoders can read local files or the network, and FileMinify never needs them.
+-->
+<policymap>
+  <policy domain="coder" rights="none" pattern="{MVG,MSL,SVG,MSVG,RSVG,TEXT,TXT,URL,HTTP,HTTPS,FTP,EPHEMERAL,LABEL,CAPTION}" />
+  <policy domain="path" rights="none" pattern="@*" />
+</policymap>

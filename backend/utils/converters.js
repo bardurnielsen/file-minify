@@ -1,8 +1,10 @@
 const path = require('path');
 const fs = require('fs');
+const { pathToFileURL } = require('url');
 const { AppError } = require('../middleware/errorHandler');
 const logger = require('./logger');
 const { run } = require('./run');
+const { DATA_DIR } = require('./paths');
 const { PDFDocument } = require('pdf-lib');
 
 const OFFICE_EXTS = ['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt'];
@@ -22,13 +24,21 @@ const withOfficeLock = (task) => {
 
 // Convert Office documents to PDF. LibreOffice overwrites an existing output
 // without prompting, so no non-interactive flag is needed here.
+//
+// Natively (FM_DATA_DIR set) LibreOffice gets a profile of its own: sharing the
+// user's means a conversion fails whenever they have LibreOffice open. In
+// Docker nobody else uses the container's profile.
+const officeProfile = DATA_DIR
+  ? [`-env:UserInstallation=${pathToFileURL(path.join(DATA_DIR, 'lo-profile')).href}`]
+  : [];
+
 const convertOfficeToPDF = (filePath, outDir = path.dirname(filePath)) =>
   withOfficeLock(async () => {
     const outputPath = path.join(outDir, `${path.basename(filePath, path.extname(filePath))}.pdf`);
     try {
       logger.info(`Converting ${filePath} to PDF in ${outDir}`);
       const { stdout, stderr } = await run('libreoffice', [
-        '--headless', '--convert-to', 'pdf', '--outdir', outDir, filePath,
+        ...officeProfile, '--headless', '--convert-to', 'pdf', '--outdir', outDir, filePath,
       ]);
       if (stdout) logger.info(`LibreOffice stdout: ${stdout}`);
       if (stderr) logger.warn(`LibreOffice stderr: ${stderr}`);
@@ -44,6 +54,22 @@ const convertOfficeToPDF = (filePath, outDir = path.dirname(filePath)) =>
     }
   });
 
+// ImageMagick picks its decoder from a file's first bytes when it recognises
+// them, whatever the name says: an upload declared image/png that is really SVG
+// gets rendered, and SVG can pull local files in (`text:`, `file:`). In Docker
+// only the missing SVG delegate stopped that; ImageMagick 7 on Windows renders
+// SVG itself, with the user's rights. The stored extension comes from the MIME
+// allowlist, so naming the decoder from it (`png:<file>`) leaves nothing to
+// sniff.
+const MAGICK_DECODERS = {
+  '.jpg': 'jpeg', '.jpeg': 'jpeg', '.png': 'png', '.gif': 'gif', '.webp': 'webp', '.pdf': 'pdf',
+};
+const magickInput = (filePath, frame = '') => {
+  const decoder = MAGICK_DECODERS[path.extname(filePath).toLowerCase()];
+  if (!decoder) throw new Error(`No ImageMagick decoder for ${path.basename(filePath)}`);
+  return `${decoder}:${filePath}${frame}`;
+};
+
 // Convert an image to PDF with ImageMagick, which also overwrites silently.
 // firstFrameOnly stops an animated GIF becoming one page per frame.
 const convertImageToPDF = async (
@@ -52,7 +78,7 @@ const convertImageToPDF = async (
 ) => {
   const outputPath = path.join(outDir, `${path.basename(filePath, path.extname(filePath))}.pdf`);
   try {
-    const input = firstFrameOnly ? `${filePath}[0]` : filePath;
+    const input = magickInput(filePath, firstFrameOnly ? '[0]' : '');
     // -auto-orient: a phone photo is stored sideways with an EXIF Orientation
     // tag, which a PDF page does not carry, so turn the pixels upright first.
     await run('convert', [input, '-auto-orient', outputPath]);
@@ -159,6 +185,7 @@ module.exports = {
   PDF_SOURCE_EXTS,
   convertOfficeToPDF,
   convertImageToPDF,
+  magickInput,
   compressPDF,
   needsPassword,
   PASSWORD_PROTECTED,

@@ -3,11 +3,13 @@ const path = require('path');
 const fs = require('fs');
 const { AppError } = require('../middleware/errorHandler');
 const { isSafeId } = require('../utils/safeId');
+const { TEMP_DIR } = require('../utils/paths');
 const { run } = require('../utils/run');
 const logger = require('../utils/logger');
 const {
   convertOfficeToPDF,
   convertImageToPDF,
+  magickInput,
   compressPDF,
   needsPassword,
   PASSWORD_PROTECTED,
@@ -89,7 +91,7 @@ const convertPDFToImage = async (filePath, format) => {
   
   try {
     // Use ImageMagick to convert PDF to image (first page only)
-    await run('convert', [`${filePath}[0]`, outputPath]);
+    await run('convert', [magickInput(filePath, '[0]'), outputPath]);
     
     // Check if the output file exists
     if (!fs.existsSync(outputPath)) {
@@ -119,7 +121,7 @@ router.post('/:id', async (req, res, next) => {
     format = typeof format === 'string' ? format : '';
     
     // Default to PDF for office documents if format is 'original' or not specified
-    const filePath = path.join(__dirname, '../temp', id);
+    const filePath = path.join(TEMP_DIR, id);
     const fileExt = path.extname(filePath).toLowerCase();
     const isOfficeDoc = ['.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt'].includes(fileExt);
     if (isOfficeDoc && (!format || format === 'original')) {
@@ -214,7 +216,7 @@ router.get('/download/:id', (req, res, next) => {
     if (!isSafeId(id)) {
       throw new AppError('File not found', 404);
     }
-    const filePath = path.join(__dirname, '../temp', id);
+    const filePath = path.join(TEMP_DIR, id);
     
     // Check if file exists
     if (!fs.existsSync(filePath)) {

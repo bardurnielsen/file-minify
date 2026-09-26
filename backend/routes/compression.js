@@ -1,10 +1,12 @@
 const express = require('express');
+const os = require('os');
 const path = require('path');
 const fs = require('fs');
 const sharp = require('sharp');
 const { PDFDocument } = require('pdf-lib');
 const { AppError } = require('../middleware/errorHandler');
 const { isSafeId } = require('../utils/safeId');
+const { TEMP_DIR } = require('../utils/paths');
 const { run } = require('../utils/run');
 const logger = require('../utils/logger');
 const { compressPDF } = require('../utils/converters');
@@ -210,8 +212,8 @@ const compressVideo = async (filePath, options) => {
     let described = describe(shortSide);
     
     // -y is required: without it FFmpeg prompts before overwriting an existing
-    // output (including /dev/null below) and blocks forever, since it has no
-    // stdin to answer from.
+    // output (including the null device below) and blocks forever, since it has
+    // no stdin to answer from.
     let passes = [[
       '-y', '-i', filePath, ...video,
       ...x265([]), '-crf', setting.crf, '-preset', setting.preset,
@@ -241,13 +243,15 @@ const compressVideo = async (filePath, options) => {
       
       // Was one shell string joined by &&; awaiting in sequence keeps the same
       // stop-on-failure behaviour without a shell to do the chaining. x265 takes
-      // its pass options through -x265-params rather than -pass/-passlogfile.
+      // its pass options through -x265-params rather than -pass/-passlogfile,
+      // and splits them on ':' - which a Windows path (C:\...) contains - so
+      // its stats file is named relative to the temp dir FFmpeg runs in.
       const pass = (n) => codec === 'h265'
-        ? x265([`pass=${n}`, `stats=${passLog}.log`])
+        ? x265([`pass=${n}`, `stats=${path.basename(passLog)}.log`])
         : ['-pass', String(n), '-passlogfile', passLog];
       passes = [
         ['-y', '-i', filePath, ...video, '-b:v', `${bitrate}k`, ...scale(fitted),
-         ...pass(1), '-an', '-f', 'mp4', '/dev/null'],
+         ...pass(1), '-an', '-f', 'mp4', os.devNull],
         ['-y', '-i', filePath, ...video, '-b:v', `${bitrate}k`, ...scale(fitted),
          ...pass(2), '-c:a', 'aac', '-b:a', `${audioKbps}k`, ...described.metadata, outputPath],
       ];
@@ -255,7 +259,7 @@ const compressVideo = async (filePath, options) => {
     
     try {
       for (const args of passes) {
-        await run('ffmpeg', args);
+        await run('ffmpeg', args, { cwd: path.dirname(filePath) });
       }
     } finally {
       if (passLog) {
@@ -309,7 +313,7 @@ router.post('/:id', async (req, res, next) => {
     // with no body, or text/plain); Express 4 gave {}. Keep 4's behaviour.
     const { quality, format, maxSize, codec, resolution } = req.body ?? {};
     
-    const filePath = path.join(__dirname, '../temp', id);
+    const filePath = path.join(TEMP_DIR, id);
     
     // Check if file exists
     if (!fs.existsSync(filePath)) {
@@ -393,7 +397,7 @@ router.get('/download/:id', (req, res, next) => {
     if (!isSafeId(id)) {
       throw new AppError('File not found', 404);
     }
-    const filePath = path.join(__dirname, '../temp', id);
+    const filePath = path.join(TEMP_DIR, id);
     
     // Check if file exists
     if (!fs.existsSync(filePath)) {

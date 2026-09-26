@@ -9,8 +9,12 @@ OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
 pass=0; fail=0
 
+# A path curl can open. On Windows (Git Bash) curl is a native program that
+# doesn't know /tmp, and MSYS won't translate a path behind `files=@`.
+native() { if command -v cygpath >/dev/null; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
+
 up() { # upload <file> <mime> -> prints id
-  curl -s -X POST "$API/upload" -F "files=@$1;type=$2" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p'
+  curl -s -X POST "$API/upload" -F "files=@$(native "$1");type=$2" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p'
 }
 
 check() { # check <label> <json> <downloadbase>
@@ -149,6 +153,19 @@ case "$id" in
   *.png) echo "PASS  stored ext follows mime -> $id"; pass=$((pass+1));;
   *)     echo "FAIL  stored ext follows mime -> $id"; fail=$((fail+1));;
 esac
+# ImageMagick picks a decoder from the bytes, not the name, so an "image" that
+# is really SVG or MVG gets rendered - and those can pull in local files
+# (text:, file:), which a native Windows install would read with the user's
+# rights. The stored extension must decide the decoder.
+printf '%s\n' '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="50">' \
+  '<image xlink:href="text:/etc/hostname" width="200" height="50"/></svg>' > "$OUT/disguised.png"
+id=$(up "$OUT/disguised.png" "image/png")
+if [ -z "$id" ]; then
+  echo "FAIL  svg disguised as png: the upload itself failed"; fail=$((fail+1))
+else
+  c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/conversion/$id" -H 'Content-Type: application/json' -d '{"format":"pdf"}')
+  [ "$c" != "200" ] && { echo "PASS  svg disguised as png is not rendered -> $c"; pass=$((pass+1)); } || { echo "FAIL  svg disguised as png was rendered -> 200"; fail=$((fail+1)); }
+fi
 # The limit is a per-server setting (MAX_FILE_MB), so test against whatever
 # this server reports rather than a fixed size.
 limit=$(curl -s "$API/config" | sed -n 's/.*"maxFileBytes":\([0-9]*\).*/\1/p')
@@ -157,7 +174,7 @@ if [ -z "$limit" ]; then
 else
   over=$((limit + 1048576))
   head -c "$over" /dev/zero > "$OUT/big.jpg"
-  c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/upload" -F "files=@$OUT/big.jpg;type=image/jpeg")
+  c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/upload" -F "files=@$(native "$OUT/big.jpg");type=image/jpeg")
   [ "$c" = "400" ] && { echo "PASS  upload over the $((limit / 1048576)) MB limit -> 400"; pass=$((pass+1)); } || { echo "FAIL  upload over the limit -> $c"; fail=$((fail+1)); }
   rm -f "$OUT/big.jpg"
 fi
