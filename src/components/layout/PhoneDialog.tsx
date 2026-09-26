@@ -78,17 +78,24 @@ const PhoneDialog: React.FC<PhoneDialogProps> = ({ open, onOpenChange }) => {
     </p>
   );
 
+  // Asked afresh on opening, and again whenever FileMinify gets the focus back
+  // while the panel is open: after making the network Private in Windows'
+  // settings, the warning goes by itself.
   useEffect(() => {
     if (!open) return;
     let live = true;
-    void fetchConfig().then((config) => {
-      if (!live || !config) return;
-      useFiles.getState().setPhone(config.phone ?? null);
-      // Not the desktop app, or not asked from the PC (a stray ?phone).
-      if (!config.phone) onOpenChange(false);
-    });
+    const refresh = () =>
+      void fetchConfig().then((config) => {
+        if (!live || !config) return;
+        useFiles.getState().setPhone(config.phone ?? null);
+        // Not the desktop app, or not asked from the PC (a stray ?phone).
+        if (!config.phone) onOpenChange(false);
+      });
+    refresh();
+    window.addEventListener('focus', refresh);
     return () => {
       live = false;
+      window.removeEventListener('focus', refresh);
     };
   }, [open, onOpenChange]);
 
@@ -170,6 +177,28 @@ const PhoneDialog: React.FC<PhoneDialogProps> = ({ open, onOpenChange }) => {
               </div>
             ) : (
               <div className="flex flex-col items-center gap-4">
+                {phone.publicNetwork && (
+                  <div
+                    role="alert"
+                    className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100"
+                  >
+                    <p className="font-medium">Phones can’t connect yet: Windows treats this Wi-Fi as Public.</p>
+                    <p className="mt-1">
+                      In Windows <strong>Settings → Network &amp; internet → Wi-Fi</strong>, open this network and set{' '}
+                      <strong>Network profile type</strong> to <strong>Private</strong>. Only do that on a network you
+                      trust, such as your home Wi-Fi.
+                    </p>
+                    {desktop && (
+                      <button
+                        type="button"
+                        onClick={() => void desktop?.openNetworkSettings()}
+                        className="mt-2 inline-flex h-8 items-center rounded-lg bg-amber-900 px-3 text-[13px] font-medium text-amber-50 transition-colors hover:bg-amber-950 focus-ring dark:bg-amber-200 dark:text-amber-950 dark:hover:bg-amber-100"
+                      >
+                        Open network settings
+                      </button>
+                    )}
+                  </div>
+                )}
                 <QrCode text={main} />
                 <p className="select-all rounded-lg bg-zinc-100 px-3 py-1.5 font-mono text-base font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50">
                   {main}

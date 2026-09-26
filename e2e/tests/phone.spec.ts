@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test';
 import { expect, open, test } from './helpers';
 import { callsTo, fakeDesktop } from './desktop-fake';
 
-type Phone = { enabled: boolean; urls: string[] };
+type Phone = { enabled: boolean; urls: string[]; publicNetwork?: boolean };
 
 // Only the desktop app's server tells the app about phone access (GET
 // /config, and only to the PC itself). The Docker stack never does, so it is
@@ -101,4 +101,37 @@ test('a stray ?phone on a server without phone access shows nothing', async ({ p
   await page.goto('/?phone');
   await expect(page.getByRole('heading', { name: /Smaller files/ })).toBeVisible();
   await expect(panel(page)).toHaveCount(0);
+});
+
+test('on a network Windows calls Public, the panel says why phones can’t connect and how to fix it', async ({ page }) => {
+  await withPhone(page, { ...ON, publicNetwork: true });
+  await open(page);
+  await page.getByRole('button', { name: 'Use on phone' }).click();
+  const warning = panel(page).getByRole('alert');
+  await expect(warning).toContainText('Windows treats this Wi-Fi as Public');
+  await expect(warning).toContainText('Network profile type');
+  // The code is still there, for once the network is Private.
+  await expect(panel(page).getByRole('img', { name: /^QR code for/ })).toBeVisible();
+});
+
+test('in the app, the Public-network warning opens Windows’ network settings, and goes once it is Private', async ({ page }) => {
+  let phone: Phone = { ...ON, publicNetwork: true };
+  await withPhone(page, () => phone);
+  await fakeDesktop(page);
+  await open(page);
+  await page.getByRole('button', { name: 'Use on phone' }).click();
+  await panel(page).getByRole('button', { name: 'Open network settings' }).click();
+  expect(await callsTo(page, 'openNetworkSettings')).toHaveLength(1);
+  // The user makes it Private in Windows and comes back to FileMinify.
+  phone = { ...ON, publicNetwork: false };
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(panel(page).getByRole('alert')).toHaveCount(0);
+});
+
+test('on a Private network, no such warning', async ({ page }) => {
+  await withPhone(page, { ...ON, publicNetwork: false });
+  await open(page);
+  await page.getByRole('button', { name: 'Use on phone' }).click();
+  await expect(panel(page).getByRole('img', { name: /^QR code for/ })).toBeVisible();
+  await expect(panel(page).getByRole('alert')).toHaveCount(0);
 });

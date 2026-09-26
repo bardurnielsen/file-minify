@@ -198,7 +198,7 @@ pinned exactly. This is the contract the pieces are built against:
 - **Bridge `window.fileminify`** (preload, `contextIsolation` and `sandbox`),
   typed in `src/lib/native.ts`: `updateStatus()`, `startUpdate()`,
   `onUpdateProgress(cb)`, `installTools()`, `setPhoneAccess(on)`,
-  `openLogFolder()`, `onDownloadSaved(cb)`, `showDownload(id)`,
+  `openLogFolder()`, `openNetworkSettings()`, `onDownloadSaved(cb)`, `showDownload(id)`,
   `setBusy(busy)`.
   - `ipcMain` handlers accept only the app window from the app origin.
   - No HTTP endpoint starts a program: `/native/*` goes, and `/config` keeps

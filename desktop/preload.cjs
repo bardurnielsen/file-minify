@@ -1,5 +1,5 @@
 // The bridge between the page and the main process: window.fileminify, typed
-// in src/lib/native.ts (DesktopBridge). Exactly these nine methods - the
+// in src/lib/native.ts (DesktopBridge). Exactly these ten methods - the
 // suite driving the real app checks them against DESKTOP_BRIDGE_KEYS in
 // e2e/tests/desktop-fake.ts. Sandboxed: only contextBridge and ipcRenderer.
 // Main checks every message's sender (lib/ipc.cjs).
@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('fileminify', {
   installTools: () => ipcRenderer.invoke('tools:install'),
   setPhoneAccess: (on) => ipcRenderer.invoke('phone:set', Boolean(on)),
   openLogFolder: () => ipcRenderer.invoke('logs:open'),
+  openNetworkSettings: () => ipcRenderer.invoke('network:settings'),
   onDownloadSaved: (cb) => subscribe('download:saved', cb),
   showDownload: (id) => ipcRenderer.invoke('download:show', String(id)),
   setBusy: (busy) => ipcRenderer.send('busy', Boolean(busy)),

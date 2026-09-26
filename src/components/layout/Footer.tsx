@@ -9,7 +9,7 @@ const Footer: React.FC = () => {
   const version = useFiles((s) => s.version);
 
   return (
-    <footer className="py-8">
+    <footer className="py-8 app:py-3">
       <div className="mx-auto flex max-w-3xl flex-col items-center justify-between gap-2 px-4 text-xs text-zinc-400 dark:text-zinc-500 sm:flex-row sm:items-start sm:px-6">
         <div className="flex flex-col items-center gap-0.5 sm:items-start">
           <span>© {new Date().getFullYear()} FileMinify · Made by Bárður Nielsen</span>

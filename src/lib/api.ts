@@ -150,6 +150,7 @@ const parsePhone = (raw: unknown): PhoneAccess | undefined => {
   return {
     enabled: phone.enabled,
     urls: phone.urls.filter((u): u is string => typeof u === 'string' && u.startsWith('http://')),
+    publicNetwork: phone.publicNetwork === true,
   };
 };
 

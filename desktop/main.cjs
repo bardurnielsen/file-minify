@@ -260,6 +260,13 @@ const installTools = async () => {
   }
 };
 
+// Windows' Network & internet page: it shows the connected network (Wi-Fi or
+// cable) with its Properties, where Public becomes Private. Only this fixed
+// address is ever opened; FileMinify never changes the setting itself.
+const openNetworkSettings = async () => {
+  await shell.openExternal('ms-settings:network');
+};
+
 const openLogFolder = async () => {
   fs.mkdirSync(config.LOG_DIR, { recursive: true });
   const problem = await shell.openPath(config.LOG_DIR);
@@ -434,6 +441,7 @@ if (!app.requestSingleInstanceLock()) {
         installTools,
         setPhoneAccess,
         openLogFolder,
+        openNetworkSettings,
         showDownload: async (id) => appWindow.showDownload(id),
         setBusy: (value) => {
           busy = value;

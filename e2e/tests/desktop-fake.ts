@@ -15,6 +15,7 @@ export const DESKTOP_BRIDGE_KEYS = [
   'installTools',
   'setPhoneAccess',
   'openLogFolder',
+  'openNetworkSettings',
   'onDownloadSaved',
   'showDownload',
   'setBusy',
@@ -75,6 +76,9 @@ function installFake(options: Required<DesktopFakeOptions>) {
     },
     openLogFolder: async () => {
       record('openLogFolder');
+    },
+    openNetworkSettings: async () => {
+      record('openNetworkSettings');
     },
     onDownloadSaved: (cb: Cb<{ id: string; name: string }>) => {
       record('onDownloadSaved');

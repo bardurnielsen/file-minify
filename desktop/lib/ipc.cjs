@@ -7,7 +7,7 @@ const log = require('./log.cjs');
 
 // getWindow(), getOrigin(): the app window and its origin, as they are now.
 // handlers: { updateStatus, startUpdate, installTools, setPhoneAccess(on),
-//   openLogFolder, showDownload(id), setBusy(busy) }
+//   openLogFolder, openNetworkSettings, showDownload(id), setBusy(busy) }
 const register = ({ getWindow, getOrigin, serverUp, handlers }) => {
   const trusted = (event) => {
     // While our server is down (restarting, say) another program could hold
@@ -45,6 +45,9 @@ const register = ({ getWindow, getOrigin, serverUp, handlers }) => {
   });
   handle('logs:open', async () => {
     await handlers.openLogFolder();
+  });
+  handle('network:settings', async () => {
+    await handlers.openNetworkSettings();
   });
   handle('download:show', async (id) => {
     if (typeof id !== 'string') throw new Error('Expected a download id.');

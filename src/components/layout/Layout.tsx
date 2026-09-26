@@ -16,7 +16,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       <Header />
       <ToolsNotice />
       <UpdateNotice />
-      <main className="mx-auto w-full max-w-3xl flex-grow px-4 pb-10 pt-10 sm:px-6 sm:pt-14">{children}</main>
+      <main className="mx-auto w-full max-w-3xl flex-grow px-4 pb-10 pt-10 sm:px-6 sm:pt-14 app:pb-4 app:pt-6">{children}</main>
       <Footer />
     </div>
   );

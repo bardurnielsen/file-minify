@@ -28,6 +28,8 @@ export interface DesktopBridge {
    */
   setPhoneAccess(on: boolean): Promise<void>;
   openLogFolder(): Promise<void>;
+  /** Windows' Network & internet settings, where a Public network is made Private. */
+  openNetworkSettings(): Promise<void>;
   /** A download was saved to the Downloads folder; `id` is for showDownload. */
   onDownloadSaved(cb: (download: { id: string; name: string }) => void): () => void;
   /** Show a saved download, selected, in Explorer. */

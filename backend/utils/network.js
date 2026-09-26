@@ -1,5 +1,7 @@
 const os = require('os');
+const path = require('path');
 const dgram = require('dgram');
+const { execFile } = require('child_process');
 
 // Addresses a phone on the same network can reach this PC by, for the app's
 // "Use on your phone" panel (native mode only). A PC often has several:
@@ -48,4 +50,39 @@ const lanAddresses = async () => {
 const fromThisMachine = (req) =>
   ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
 
-module.exports = { lanAddresses, fromThisMachine };
+// Whether Windows treats the network an address is on as Public. Its
+// firewall then blocks phones even with FileMinify allowed on Private
+// networks - and Windows 11 often files a new home Wi-Fi as Public. Asked of
+// Windows itself (Get-NetConnectionProfile), matched by the adapter's name,
+// remembered for 20 s. False where it can't tell, and off Windows.
+const PROFILE_TTL_MS = 20_000;
+let profiles = null; // { at, categories: Map(alias -> 'Public'|'Private'|'DomainAuthenticated') }
+
+const readProfiles = () => new Promise((resolve) => {
+  const shell = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  execFile(shell, ['-NoProfile', '-NonInteractive', '-Command',
+    'Get-NetConnectionProfile | ForEach-Object { "$($_.InterfaceAlias)|$($_.NetworkCategory)" }'],
+  { windowsHide: true, timeout: 5000 }, (err, stdout) => {
+    const categories = new Map();
+    if (!err) {
+      for (const line of String(stdout).split(/\r?\n/)) {
+        const at = line.lastIndexOf('|');
+        if (at > 0) categories.set(line.slice(0, at).trim(), line.slice(at + 1).trim());
+      }
+    }
+    resolve(categories);
+  });
+});
+
+const onPublicNetwork = async (address) => {
+  if (process.platform !== 'win32' || !address) return false;
+  const alias = Object.entries(os.networkInterfaces())
+    .find(([, list]) => (list || []).some((a) => a.address === address))?.[0];
+  if (!alias) return false;
+  if (!profiles || Date.now() - profiles.at > PROFILE_TTL_MS) {
+    profiles = { at: Date.now(), categories: await readProfiles() };
+  }
+  return profiles.categories.get(alias) === 'Public';
+};
+
+module.exports = { lanAddresses, fromThisMachine, onPublicNetwork };

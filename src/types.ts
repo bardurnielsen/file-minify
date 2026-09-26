@@ -25,6 +25,8 @@ export type VideoResolution = '1440' | '1080' | '720' | '480';
 export interface PhoneAccess {
   enabled: boolean;
   urls: string[];
+  /** Windows treats the network of the first address as Public: its firewall blocks phones. */
+  publicNetwork?: boolean;
 }
 
 /** The desktop app's own check for a newer release (desktop.updateStatus()). */

@@ -22,7 +22,7 @@ const { errorHandler } = require('./middleware/errorHandler');
 const logger = require('./utils/logger');
 const { TEMP_DIR } = require('./utils/paths');
 const { toolReport } = require('./utils/tools');
-const { lanAddresses, fromThisMachine } = require('./utils/network');
+const { lanAddresses, fromThisMachine, onPublicNetwork } = require('./utils/network');
 const desktop = require('./utils/desktop');
 const { missingTools, installingTools } = require('./utils/tools');
 
@@ -184,13 +184,17 @@ api.get('/health', (req, res) => {
 // asked of the desktop app's main process, never of an HTTP endpoint.
 api.get('/config', async (req, res) => {
   const phoneAccess = HOST !== '127.0.0.1';
+  const pcOnly = STATIC_DIR && fromThisMachine(req);
+  const addresses = pcOnly && phoneAccess ? await lanAddresses() : [];
   res.status(200).json({
     maxFileBytes: uploadRoutes.MAX_FILE_BYTES,
     maxFiles: uploadRoutes.MAX_FILES,
-    ...(STATIC_DIR && fromThisMachine(req) && {
+    ...(pcOnly && {
       phone: {
         enabled: phoneAccess,
-        urls: phoneAccess ? (await lanAddresses()).map((a) => `http://${a}:${PORT}`) : [],
+        urls: addresses.map((a) => `http://${a}:${PORT}`),
+        // The address the QR code shows is on a network Windows calls Public.
+        publicNetwork: await onPublicNetwork(addresses[0]),
       },
       version: process.env.FM_VERSION || null,
       missingTools: missingTools().map((m) => m.key),
