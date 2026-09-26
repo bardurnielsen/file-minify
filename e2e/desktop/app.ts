@@ -86,7 +86,15 @@ export const test = base.extend<{ app: Page }, { cdp: Browser }>({
     async ({}, provide) => {
       // Left connected when the worker ends: closing a CDP connection may
       // close the app with it.
-      await provide(await chromium.connectOverCDP(CDP_URL));
+      const browser = await chromium.connectOverCDP(CDP_URL);
+      // Playwright redirects downloads to a folder of its own when it
+      // connects (Browser.setDownloadBehavior), which would bypass the app's
+      // will-download handler: the app reported the file saved to Downloads
+      // while the bytes went to Playwright's temp folder. Hand downloads back
+      // to the app, as they are when no test is attached.
+      const session = await browser.newBrowserCDPSession();
+      await session.send('Browser.setDownloadBehavior', { behavior: 'default' });
+      await provide(browser);
     },
     { scope: 'worker' },
   ],
