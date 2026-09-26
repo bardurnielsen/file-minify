@@ -237,8 +237,8 @@ pinned exactly. This is the contract the pieces are built against:
   that runs `FileMinify.exe --hidden`, which starts in the tray only; the
   tools question waits until the window first opens. It is read back by its
   name (`launchItems`), and the uninstaller deletes the Run value.
-- **settings.env keys added:** `FM_UPDATE_PRERELEASE=1` (testers get release
-  candidates), `FM_DISABLE_GPU=1`, `FM_UPDATE_CHECK=0` (never look). For
+- **settings.env keys added:** `FM_UPDATE_PRERELEASE=1` (testers get betas),
+  `FM_DISABLE_GPU=1`, `FM_UPDATE_CHECK=0` (never look). For
   CI only: `FM_UPDATE_FEED` (a generic feed; `http://127.0.0.1` or
   `http://localhost` only, anything else is ignored) and `FM_NO_WINDOW=1`
   (server and tray, no window). `FM_NO_WINDOW` and `FM_DISABLE_GPU` are
@@ -251,19 +251,52 @@ pinned exactly. This is the contract the pieces are built against:
     itself, and starts the new one.
   - The installer's `customInit` removes a 1.0.x install *without* running
     Inno's uninstaller, which would delete settings.env.
+  - A prerelease is only ever `vX.Y.Z-beta.N` (the build and release jobs
+    refuse anything else). electron-updater reads the part after the `-` as
+    a channel: an install from an `-rc.N` would only look for more rc
+    releases, never the stable one, while `beta` (and `alpha`) take stable.
+  - A published release is never replaced: the release job fills in and
+    publishes a draft, and fails on a published one. Release a new version.
 - **Installer** (`desktop/build/installer.nsh`, electron-builder's NSIS
-  macros).
+  macros, and the PowerShell scripts beside it, unpacked to the installer's
+  temp folder and read in as a script block, so no execution policy applies;
+  paths reach them in `FMSETUP_*` environment variables, never quoted into a
+  command line).
   - `customInit`, before anything is extracted, finds 1.0.x by its Inno
-    uninstall key (`{A714B514-…}_is1`) or its files. It stops the old
-    `node.exe` (by exact path) and its Edge window, deletes 1.0.x's files by
-    name, its shortcuts, the Edge profile (`FileMinify\window`) and, last,
-    the key. settings.env, logs and temp stay. Every step can run again: a
-    file still locked keeps the key, and the next install finishes the job.
+    uninstall key (`{A714B514-…}_is1`) or its files. `stop-processes.ps1`
+    stops the old `node.exe` (by exact path), the bundled Ghostscript under
+    its `tools\gs\`, the FFmpeg, ImageMagick and LibreOffice processes it
+    started (down the parent chain; never its whole tree, since setup is its
+    child when 1.0.3's updater starts it) and its Edge window. Then it
+    deletes 1.0.x's files by name, its shortcuts, the Edge profile
+    (`FileMinify\window`) and, last, the key. settings.env, logs and temp
+    stay. Every step can run again: a file still locked keeps the key, and
+    the next install finishes the job. Half done (`node.exe` held), the
+    phone-access and log-folder shortcuts still go, the key gets
+    `SystemComponent=1` (out of Apps & Features) and Inno's `unins000.*` are
+    deleted, so nobody can run the uninstaller that would wipe 2.0's data.
     It also moves its working directory out of the old folder, which 1.0.3's
-    updater starts setup in. It must never ask anything (a MessageBox needs
-    `/SD`): winget and CI run it with `/S`, 1.0.3's updater with no arguments.
+    updater starts setup in, notes whether a 1.0.x user had a desktop
+    shortcut, and whether a silent install (winget) is about to stop a
+    running FileMinify (2.x or 1.0.x). It must never ask anything (a
+    MessageBox needs `/SD`): winget and CI run it with `/S`, 1.0.3's updater
+    with no arguments.
+  - `customCheckAppRunning` replaces electron-builder's check (which broke on
+    a quote in the path): an update (`--updated`) first gets 8 s to quit by
+    itself, then everything running from the install folder is stopped,
+    with the tools it started (`stop-processes.ps1`; `taskkill` by name if
+    PowerShell can't run). `customUnInstallCheck` is electron-builder's own
+    with `/SD` on its MessageBox.
   - `customInstall` grants "ALL APPLICATION PACKAGES" read access to the
-    install folder (the per-user GPU start-up failure).
+    install folder (the per-user GPU start-up failure); deletes the
+    updater's `current.blockmap` unless it is an update (installed any other
+    way it is stale, and the next differential download would fail and fetch
+    everything) and 1.0.3's leftover `%TEMP%\FileMinify-update-*` downloads
+    (not the one it runs from). After a 1.0.x install it removes the new
+    desktop shortcut if the user had none, and `retarget-shortcuts.ps1`
+    points shortcuts to the old `node.exe` (desktop, Start-menu folders,
+    taskbar pins) at the new exe, with the app's AppUserModelID. If a silent
+    install stopped FileMinify, it starts it again with `--hidden`.
   - `customUnInstall` removes `%LOCALAPPDATA%\FileMinify` and the updater's
     cache, except during an update (`--updated`).
 
@@ -457,18 +490,25 @@ runners when the backend, app or `desktop/` change:
   order). That checks the bridge's keys against `DESKTOP_BRIDGE_KEYS`, a
   download to Downloads, phone access on and off, a second start, the update
   to desktop-next through the Update button (`FM_UPDATE_FEED` to a local
-  `python -m http.server`), and that closing the window stops everything.
-  Then it uninstalls and checks nothing is left.
-- `migration`, twice: installs the real 1.0.3 (hash-checked), seeds
-  settings.env, logs and an Edge profile, starts the old app and an Edge,
-  then runs the new installer silently (`/S`), or as 1.0.3's updater does
-  (no arguments, from the old folder, with its stale environment). The old
-  processes, folder, key and shortcuts must be gone, settings.env
-  byte-identical, and in the updater case the new app running with phone
-  access still on.
+  `python -m http.server`, which also serves the installed version's
+  blockmap, and must be asked for it), and that closing the window stops
+  everything. Then it uninstalls and checks nothing is left.
+- `migration`, three times: installs the real 1.0.3 (hash-checked), seeds
+  settings.env, logs, an Edge profile, a taskbar pin and a stale
+  `%TEMP%\FileMinify-update-*`, starts the old app and an Edge, then runs
+  the new installer silently (`/S`, no desktop icon), as 1.0.3's updater
+  does (a detached child of the old `node.exe`, no arguments, in the old
+  folder, with its stale environment), or silently with the old `node.exe`
+  held open (it must stop half way: key kept but hidden, `unins000.*`
+  gone), then again once let go. The old processes, folder, key and
+  shortcuts must be gone, the pin and any desktop icon pointing at the new
+  exe (and no desktop icon where 1.0.x had none), settings.env
+  byte-identical, and the new app running with phone access still on.
 - `release`, on a `v*` tag: checks latest.yml against the exe, then one
   `gh release create` with the exe, its blockmap and latest.yml, never a
-  draft; a tag with a `-` is a prerelease. It then checks `releases/latest`
+  draft (a draft made by hand is filled in and published; a published
+  release fails the job); a `vX.Y.Z-beta.N` tag is a prerelease, and any
+  other tag with a `-` fails. It then checks `releases/latest`
   still meets the 1.0.3 rules above, and prints the SHA-256 for the winget
   manifest. The native mode can be exercised on Linux
 too: run the backend image with `FM_STATIC_DIR` pointing at a built `dist/`,
