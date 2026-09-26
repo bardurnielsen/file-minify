@@ -78,14 +78,19 @@ export const stopWatchingErrors = (page: Page) => unwatched.add(page);
  */
 export const test = base.extend<{ app: Page }, { cdp: Browser }>({
   cdp: [
-    async ({}, use) => {
+    // Playwright reads fixture dependencies from this destructuring, so the
+    // empty pattern is required. The second argument is named `provide`,
+    // not Playwright's usual `use`, which the React hooks lint rule mistakes
+    // for React's use().
+    // eslint-disable-next-line no-empty-pattern
+    async ({}, provide) => {
       // Left connected when the worker ends: closing a CDP connection may
       // close the app with it.
-      await use(await chromium.connectOverCDP(CDP_URL));
+      await provide(await chromium.connectOverCDP(CDP_URL));
     },
     { scope: 'worker' },
   ],
-  app: async ({ cdp }, use) => {
+  app: async ({ cdp }, provide) => {
     const page = await appPage(cdp);
     const errors: string[] = [];
     const onPageError = (e: Error) => {
@@ -96,7 +101,7 @@ export const test = base.extend<{ app: Page }, { cdp: Browser }>({
     };
     page.on('pageerror', onPageError);
     page.on('console', onConsole);
-    await use(page);
+    await provide(page);
     page.off('pageerror', onPageError);
     page.off('console', onConsole);
     expect(errors, 'console errors').toEqual([]);
