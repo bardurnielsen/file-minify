@@ -8,8 +8,9 @@ name: Windows
 #   smoke suite and the desktop suite (e2e/desktop, Playwright driving the
 #   real window) against it, updates it to desktop-next through the app's own
 #   Update button, and uninstalls it.
-# - migration: installs the real 1.0.3 and puts this build over it, silently
-#   and the way 1.0.3's in-app updater starts it.
+# - migration: installs the real 1.0.3 and puts this build over it, silently,
+#   the way 1.0.3's in-app updater starts it, and with the old node.exe
+#   locked (half way, then finished by the next install).
 # - release (v* tags): publishes the installer, then checks the release still
 #   meets what 1.0.3's updater asks of every release (CLAUDE.md, "Desktop app").
 #
@@ -78,6 +79,9 @@ jobs:
         id: version
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="${GITHUB_REF_NAME#v}"; else v="0.0.${GITHUB_RUN_NUMBER}"; fi
+          # What the release job will accept (see there), checked before an
+          # hour of building and testing rather than after.
+          [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]] || { echo "v$v is neither vX.Y.Z nor vX.Y.Z-beta.N"; exit 1; }
           IFS=. read -r major minor patch <<<"${v%%-*}"
           next="$major.$minor.$((patch + 1))"
           echo "version=$v" >> "$GITHUB_OUTPUT"
@@ -215,7 +219,10 @@ jobs:
           exe="$LOCALAPPDATA/Programs/fileminify-app/FileMinify.exe"
           log="$LOCALAPPDATA/FileMinify/logs/desktop.log"
           # The update feed (electron-updater's generic provider): the build a
-          # version up, with its latest.yml.
+          # version up, with its latest.yml, and the installed version's
+          # blockmap, which a differential download compares against (as a
+          # GitHub release's assets would have it).
+          cp "installer/FileMinify-Setup-$V.exe.blockmap" next/
           python -m http.server 8123 --bind 127.0.0.1 --directory next > feed.log 2>&1 &
           # The app checks for updates as soon as it starts: the feed must answer first.
           for i in $(seq 1 30); do curl -fsS -o /dev/null http://127.0.0.1:8123/latest.yml && break; sleep 1; done
@@ -261,6 +268,13 @@ jobs:
           # $NEXT and close it.
           cd e2e
           FM_TEST_VERSION="$V" FM_TEST_NEXT_VERSION="$NEXT" npx playwright test -c desktop.config.ts
+          cd ..
+
+          # The update tried a differential download: it fetched the installed
+          # version's blockmap. (python's server answers ranges with the whole
+          # file, so the download itself then falls back to a full one.)
+          grep -F "GET /FileMinify-Setup-$V.exe.blockmap " feed.log | grep -qF '" 200 ' ||
+            { cat feed.log; echo "the update never fetched FileMinify-Setup-$V.exe.blockmap"; exit 1; }
 
       - name: Logs
         if: always()
@@ -299,7 +313,9 @@ jobs:
           # The uninstaller carries on from a copy of itself in %TEMP%.
           $installDir = "$env:LOCALAPPDATA\Programs\fileminify-app"
           $left = {
-            @($installDir, "$env:LOCALAPPDATA\FileMinify", "$env:LOCALAPPDATA\fileminify-app-updater",
+            # %APPDATA%\FileMinify would be Electron's default userData, which
+            # the app moves to %LOCALAPPDATA%\FileMinify\app.
+            @($installDir, "$env:LOCALAPPDATA\FileMinify", "$env:LOCALAPPDATA\fileminify-app-updater", "$env:APPDATA\FileMinify",
               "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\FileMinify.lnk",
               "$([Environment]::GetFolderPath('Desktop'))\FileMinify.lnk") | Where-Object { Test-Path $_ }
           }
@@ -312,6 +328,10 @@ jobs:
   # (desktop/build/installer.nsh) removes it without running Inno's uninstaller
   # (which deletes settings.env), whether 1.0.3's updater starts it or it is
   # run silently (winget, or by hand with /S).
+  # - silent: /S, by a user who never ticked 1.0.x's desktop icon.
+  # - as-updater: started as 1.0.3's updater does, with a desktop icon.
+  # - locked: /S with the old node.exe held open, so the migration stops half
+  #   way; then /S again, once it is let go, which finishes it.
   migration:
     needs: build
     runs-on: windows-latest
@@ -319,7 +339,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [ silent, as-updater ]
+        variant: [ silent, as-updater, locked ]
     env:
       V: ${{ needs.build.outputs.version }}
     steps:
@@ -331,6 +351,7 @@ jobs:
 
       # Started by the updater, the new app runs straight away; with the tools
       # there it starts as it does on a user's PC, without offering to fetch them.
+      # (After a silent install it starts in the tray, which asks nothing.)
       - name: Install the tools
         if: matrix.variant == 'as-updater'
         run: choco install -y --no-progress ffmpeg imagemagick libreoffice-fresh
@@ -356,21 +377,32 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $variant = '${{ matrix.variant }}'
           $old = "$env:LOCALAPPDATA\Programs\FileMinify"
           $data = "$env:LOCALAPPDATA\FileMinify"
           $programs = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
           $desktop = [Environment]::GetFolderPath('Desktop')
+          $pinned = "$env:APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar"
           $isKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{A714B514-AC38-41E4-932A-250B1C07E25C}_is1'
+          $newExe = "$env:LOCALAPPDATA\Programs\fileminify-app\FileMinify.exe"
 
           # What a 1.0.3 user has: phone access on, a line of their own, a log,
-          # the old window's Edge profile, and (if they ticked it) a desktop icon.
-          New-Item -ItemType Directory -Force "$data\logs", "$data\window" | Out-Null
+          # the old window's Edge profile, (if they ticked it) a desktop icon,
+          # FileMinify pinned to the taskbar, and a setup download left in
+          # %TEMP% by an earlier update.
+          New-Item -ItemType Directory -Force "$data\logs", "$data\window", $pinned, "$env:TEMP\FileMinify-update-stale" | Out-Null
           [IO.File]::WriteAllText("$data\settings.env", "# FileMinify settings, one KEY=value per line. The installer manages FM_HOST.`r`nMAX_FILE_SIZE=50MB`r`nFM_HOST=0.0.0.0`r`n")
           Set-Content "$data\logs\keep.txt" 'an old log'
           Set-Content "$data\window\marker.txt" 'the old window profile'
+          Set-Content "$env:TEMP\FileMinify-update-stale\FileMinify-Setup-1.0.2.exe" 'an old download'
           $shell = New-Object -ComObject WScript.Shell
-          $lnk = $shell.CreateShortcut("$desktop\FileMinify.lnk")
-          $lnk.TargetPath = "$old\node.exe"; $lnk.Arguments = "`"$old\launcher.js`""; $lnk.Save()
+          function New-OldShortcut($path) {
+            $lnk = $shell.CreateShortcut($path)
+            $lnk.TargetPath = "$old\node.exe"; $lnk.Arguments = "`"$old\launcher.js`""; $lnk.WorkingDirectory = $old; $lnk.Save()
+          }
+          $hadDesktop = $variant -ne 'silent'
+          if ($hadDesktop) { New-OldShortcut "$desktop\FileMinify.lnk" }
+          New-OldShortcut "$pinned\FileMinify.lnk"
           $settingsHash = (Get-FileHash "$data\settings.env").Hash
 
           # The old app running, and its window (an Edge with that profile).
@@ -393,27 +425,54 @@ jobs:
           if (-not (& $oldEdge)) { throw 'no old window (Edge) running' }
 
           $setup = (Get-Item "installer\FileMinify-Setup-$env:V.exe").FullName
-          if ('${{ matrix.variant }}' -eq 'silent') {
+          function Invoke-SilentSetup {
             $p = Start-Process -FilePath $setup -ArgumentList '/S' -PassThru
             $null = $p.Handle # or ExitCode stays empty
-          } else {
+            if (-not $p.WaitForExit(300000)) { throw 'the installer did not finish in 5 minutes' }
+            "The installer exited with $($p.ExitCode)"
+          }
+          if ($variant -eq 'as-updater') {
             # As 1.0.3's backend/utils/update.js starts it: downloaded to a
-            # folder in %TEMP%, detached, no arguments, in the old install
-            # folder (the launcher's working directory), with the launcher's
-            # environment minus FM_*: stale MAGICK_* paths into the old folder.
+            # folder in %TEMP%, a detached child of the old node.exe, no
+            # arguments, in the old install folder (the launcher's working
+            # directory), with the launcher's environment minus FM_*: stale
+            # MAGICK_* paths into the old folder.
             $dir = New-Item -ItemType Directory -Force "$env:TEMP\FileMinify-update-ci"
             Copy-Item $setup $dir
             $setup = "$dir\FileMinify-Setup-$env:V.exe"
+            Set-Content "$dir\keep.txt" "the running setup's own folder"
             Get-ChildItem env:FM_* | Remove-Item
             $env:NODE_ENV = 'production'; $env:PORT = '3051'
             $env:MAX_FILE_SIZE = '50MB'; $env:PROCESS_TIMEOUT_MIN = '30'
             $env:MAGICK_GHOSTSCRIPT_PATH = "$old\tools\gs\bin"
             $env:MAGICK_CONFIGURE_PATH = "$old\magick"
-            $p = Start-Process -FilePath $setup -WorkingDirectory $old -PassThru
-            $null = $p.Handle
+            & "$old\node.exe" -e "require('child_process').spawn(process.argv[1],[],{detached:true,stdio:'ignore',cwd:process.argv[2]}).unref()" $setup $old
+            if ($LASTEXITCODE) { throw "the old node.exe could not start setup ($LASTEXITCODE)" }
+            $name = "FileMinify-Setup-$env:V"
+            for ($i = 0; $i -lt 150 -and (Get-Process -Name $name -ErrorAction SilentlyContinue); $i++) { Start-Sleep 2 }
+            if (Get-Process -Name $name -ErrorAction SilentlyContinue) { throw 'the installer did not finish in 5 minutes' }
+            'The installer finished'
+          } elseif ($variant -eq 'locked') {
+            # Open without delete sharing, node.exe can't be deleted: as when an
+            # antivirus holds it, or PowerShell is blocked so nothing is stopped.
+            $lock = [IO.File]::Open("$old\node.exe", 'Open', 'Read', 'Read')
+            Invoke-SilentSetup
+            $failed = @()
+            if (-not (Test-Path $isKey)) { $failed += "1.0.x's uninstall key went, though node.exe stayed" }
+            elseif ((Get-ItemProperty $isKey).SystemComponent -ne 1) { $failed += "1.0.x still shows in Apps & Features (no SystemComponent=1)" }
+            foreach ($f in 'unins000.exe', 'unins000.dat') { if (Test-Path "$old\$f") { $failed += "Inno's $f is still there" } }
+            if (-not (Test-Path "$old\launcher.js")) { $failed += "1.0.x's files went, though node.exe stayed" }
+            foreach ($name in 'FileMinify phone access.lnk', 'FileMinify log folder.lnk') {
+              if (Test-Path "$programs\$name") { $failed += "the old Start-menu $name is still there" }
+            }
+            if (-not (Test-Path $newExe)) { $failed += 'the new app is not installed' }
+            if ($failed) { $failed | ForEach-Object { "FAILED (half way): $_" }; throw "$($failed.Count) check(s) failed" }
+            'Half way, as it should be: 1.0.x hidden, its uninstaller gone, its key kept for the next try.'
+            $lock.Dispose()
+            Invoke-SilentSetup
+          } else {
+            Invoke-SilentSetup
           }
-          if (-not $p.WaitForExit(300000)) { throw 'the installer did not finish in 5 minutes' }
-          "The installer exited with $($p.ExitCode)"
 
           $failed = @()
           if (& $oldNode) { $failed += 'the old node.exe is still running' }
@@ -423,9 +482,9 @@ jobs:
           foreach ($name in 'FileMinify phone access.lnk', 'FileMinify log folder.lnk') {
             if (Test-Path "$programs\$name") { $failed += "the old Start-menu $name is still there" }
           }
-          # The new app has shortcuts of the same name; none may still start the old one.
-          $newExe = "$env:LOCALAPPDATA\Programs\fileminify-app\FileMinify.exe"
-          foreach ($l in "$programs\FileMinify.lnk", "$desktop\FileMinify.lnk") {
+          # The new app has shortcuts of the same name; none may still start
+          # the old one, and the pinned one now starts the new app.
+          foreach ($l in "$programs\FileMinify.lnk", "$desktop\FileMinify.lnk", "$pinned\FileMinify.lnk") {
             if (Test-Path $l) {
               $target = $shell.CreateShortcut($l).TargetPath
               "$l -> $target"
@@ -433,23 +492,32 @@ jobs:
             }
           }
           if (-not (Test-Path "$programs\FileMinify.lnk")) { $failed += 'no Start-menu shortcut for the new app' }
+          if (-not (Test-Path "$pinned\FileMinify.lnk")) { $failed += 'the pinned shortcut went' }
+          # The desktop icon as the user had it in 1.0.x.
+          if ($hadDesktop -and -not (Test-Path "$desktop\FileMinify.lnk")) { $failed += 'the desktop shortcut went' }
+          if (-not $hadDesktop -and (Test-Path "$desktop\FileMinify.lnk")) { $failed += 'a desktop shortcut appeared, though 1.0.x had none' }
           if ((Get-FileHash "$data\settings.env").Hash -ne $settingsHash) { Get-Content "$data\settings.env"; $failed += 'settings.env changed' }
           if (-not (Test-Path "$data\logs\keep.txt")) { $failed += 'the logs went' }
           if (Test-Path "$data\window") { $failed += "the old window's Edge profile is still there" }
           if (-not (Test-Path $newExe)) { $failed += 'the new app is not installed' }
+          if (Test-Path "$env:TEMP\FileMinify-update-stale") { $failed += "1.0.3's old setup download is still in %TEMP%" }
+          if ($variant -eq 'as-updater' -and -not (Test-Path "$env:TEMP\FileMinify-update-ci\keep.txt")) { $failed += "the running setup's own folder was emptied" }
           $key = Get-ChildItem HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall | Where-Object { $_.GetValue('DisplayName') -eq 'FileMinify' }
           if (-not $key) { $failed += 'no uninstall entry for the new app' } else { "New uninstall entry: $($key.PSChildName), $($key.GetValue('DisplayVersion'))" }
 
-          if ('${{ matrix.variant }}' -eq 'as-updater') {
-            # Setup starts the new app itself, with phone access still on.
-            $config = $null
-            for ($i = 0; $i -lt 60; $i++) {
-              try { $config = Invoke-RestMethod http://127.0.0.1:3051/api/config; if ($config.version -eq $env:V) { break } } catch { }
-              Start-Sleep 2
-            }
-            $config | ConvertTo-Json -Depth 4
-            if ($config.version -ne $env:V) { $failed += "the new app did not start (or reports $($config.version))" }
-            elseif (-not $config.phone.enabled) { $failed += 'phone access (FM_HOST=0.0.0.0) was lost' }
+          # The new app runs, with phone access still on: started by setup when
+          # 1.0.3's updater ran it, or (silently) because it stopped the old
+          # one, then in the tray.
+          $config = $null
+          for ($i = 0; $i -lt 60; $i++) {
+            try { $config = Invoke-RestMethod http://127.0.0.1:3051/api/config; if ($config.version -eq $env:V) { break } } catch { }
+            Start-Sleep 2
+          }
+          $config | ConvertTo-Json -Depth 4
+          if ($config.version -ne $env:V) { $failed += "the new app did not start (or reports $($config.version))" }
+          elseif (-not $config.phone.enabled) { $failed += 'phone access (FM_HOST=0.0.0.0) was lost' }
+          Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'FileMinify.exe' } | Select-Object -First 1 ProcessId, CommandLine | Format-List
+          if ($variant -eq 'as-updater') {
             $log = Get-Content -Raw "$data\logs\desktop.log" -ErrorAction SilentlyContinue
             if ($log -notlike '*\fileminify-app\resources\magick*') { $failed += 'desktop.log does not name the new ImageMagick policy folder' }
             if ($log -like "*$old\magick*") { $failed += "the new app used the old MAGICK_CONFIGURE_PATH" }
@@ -500,20 +568,31 @@ jobs:
           [ "$(grep -cxF "sha512: $sha" <<<"$lines")" = 2 ] || { echo "latest.yml's sha512 is not the installer's"; exit 1; }
 
       # One call, never a draft: 1.0.3 looks at releases/latest, and gh
-      # uploads the assets before it publishes. A release candidate (a tag
-      # with a '-') is a prerelease, which neither 1.0.3 nor 2.x without
-      # FM_UPDATE_PRERELEASE sees.
+      # uploads the assets before it publishes. A beta (vX.Y.Z-beta.N) is a
+      # prerelease, which neither 1.0.3 nor 2.x without FM_UPDATE_PRERELEASE
+      # sees. Only beta: electron-updater reads the part after the '-' as a
+      # channel, and an install from an -rc.N tag would only ever look for
+      # more rc releases, never the stable one; beta (and alpha) take stable
+      # too.
+      # A published release is never changed: an installer someone may have
+      # (winget pins its SHA-256; electron-updater has cached the blockmap)
+      # must stay the one on the page. A draft, made by hand, is filled in
+      # and published.
       - name: Publish the release
         run: |
           exe="FileMinify-Setup-$V.exe"
           if [[ "$TAG" == *-* ]]; then
+            [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]] ||
+              { echo "$TAG: a prerelease tag must be vX.Y.Z-beta.N (not rc: an rc install would never update to the stable release)"; exit 1; }
             kind=(--prerelease --latest=false)
           else
             # What 1.0.3's updater parses: vX.Y.Z and FileMinify-Setup-X.Y.Z.exe.
-            [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "$TAG is neither vX.Y.Z nor a prerelease"; exit 1; }
+            [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "$TAG is neither vX.Y.Z nor vX.Y.Z-beta.N"; exit 1; }
             kind=(--latest)
           fi
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          if draft=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null); then
+            [ "$draft" = true ] ||
+              { echo "$TAG is already published: its installer is never replaced. Release a new version instead."; exit 1; }
             gh release upload "$TAG" "$exe" "$exe.blockmap" latest.yml --clobber
             gh release edit "$TAG" --draft=false "${kind[@]}"
           else
