@@ -22,7 +22,7 @@ const { errorHandler } = require('./middleware/errorHandler');
 const logger = require('./utils/logger');
 const { TEMP_DIR } = require('./utils/paths');
 const { toolReport } = require('./utils/tools');
-const { lanAddresses, fromThisMachine, onPublicNetwork } = require('./utils/network');
+const { lanAddresses, fromThisMachine, onPublicNetwork, firewallOnPublic } = require('./utils/network');
 const desktop = require('./utils/desktop');
 const { missingTools, installingTools } = require('./utils/tools');
 
@@ -186,6 +186,7 @@ api.get('/config', async (req, res) => {
   const phoneAccess = HOST !== '127.0.0.1';
   const pcOnly = STATIC_DIR && fromThisMachine(req);
   const addresses = pcOnly && phoneAccess ? await lanAddresses() : [];
+  const publicNetwork = await onPublicNetwork(addresses[0]);
   res.status(200).json({
     maxFileBytes: uploadRoutes.MAX_FILE_BYTES,
     maxFiles: uploadRoutes.MAX_FILES,
@@ -193,8 +194,10 @@ api.get('/config', async (req, res) => {
       phone: {
         enabled: phoneAccess,
         urls: addresses.map((a) => `http://${a}:${PORT}`),
-        // The address the QR code shows is on a network Windows calls Public.
-        publicNetwork: await onPublicNetwork(addresses[0]),
+        // The address the QR code shows is on a network Windows calls Public,
+        // and whether FileMinify's firewall rules let phones in there.
+        publicNetwork,
+        ...(publicNetwork && { firewall: await firewallOnPublic() }),
       },
       version: process.env.FM_VERSION || null,
       missingTools: missingTools().map((m) => m.key),

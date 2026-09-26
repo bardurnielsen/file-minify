@@ -85,4 +85,42 @@ const onPublicNetwork = async (address) => {
   return profiles.categories.get(alias) === 'Public';
 };
 
-module.exports = { lanAddresses, fromThisMachine, onPublicNetwork };
+// A Public network blocks phones only if the firewall does: allowing
+// FileMinify when Windows first asks creates an Allow rule for the networks
+// ticked there (Private by default) and a Block rule for the rest, and
+// someone may have ticked Public too, or turned the firewall off. So look at
+// FileMinify's own inbound rules for the Public profile: 'blocks', 'allows',
+// or 'unknown' if they can't be read. process.execPath is FileMinify.exe,
+// the program the rules name. Remembered for 20 s.
+let firewall = null; // { at, verdict }
+
+const FIREWALL_CHECK = [
+  "$p = Get-NetFirewallProfile -Profile Public -ErrorAction Stop",
+  "if (-not $p.Enabled) { 'allows'; exit }",
+  "$r = @(Get-NetFirewallApplicationFilter -Program $env:FM_EXE -ErrorAction SilentlyContinue |",
+  "  Get-NetFirewallRule -ErrorAction SilentlyContinue |",
+  "  Where-Object { $_.Enabled -eq 'True' -and $_.Direction -eq 'Inbound' -and ($_.Profile -match 'Public|Any') })",
+  "if ($r | Where-Object { $_.Action -eq 'Block' }) { 'blocks' }",
+  "elseif ($r | Where-Object { $_.Action -eq 'Allow' }) { 'allows' }",
+  "else { 'blocks' }", // no rule at all: inbound is blocked by default
+].join('\n');
+
+const readFirewall = () => new Promise((resolve) => {
+  const shell = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  execFile(shell, ['-NoProfile', '-NonInteractive', '-Command', FIREWALL_CHECK],
+    { windowsHide: true, timeout: 8000, env: { ...process.env, FM_EXE: process.execPath } },
+    (err, stdout) => {
+      const verdict = String(stdout).trim().split(/\r?\n/).pop();
+      resolve(!err && (verdict === 'blocks' || verdict === 'allows') ? verdict : 'unknown');
+    });
+});
+
+const firewallOnPublic = async () => {
+  if (process.platform !== 'win32') return 'unknown';
+  if (!firewall || Date.now() - firewall.at > PROFILE_TTL_MS) {
+    firewall = { at: Date.now(), verdict: await readFirewall() };
+  }
+  return firewall.verdict;
+};
+
+module.exports = { lanAddresses, fromThisMachine, onPublicNetwork, firewallOnPublic };

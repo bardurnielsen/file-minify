@@ -177,12 +177,16 @@ const PhoneDialog: React.FC<PhoneDialogProps> = ({ open, onOpenChange }) => {
               </div>
             ) : (
               <div className="flex flex-col items-center gap-4">
-                {phone.publicNetwork && (
+                {phone.publicNetwork && phone.firewall !== 'allows' && (
                   <div
                     role="alert"
                     className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100"
                   >
-                    <p className="font-medium">Phones can’t connect yet: Windows treats this Wi-Fi as Public.</p>
+                    <p className="font-medium">
+                      {phone.firewall === 'blocks'
+                        ? 'Phones can’t connect yet: Windows treats this Wi-Fi as Public.'
+                        : 'This Wi-Fi is set to Public in Windows. If phones can’t connect, that’s why.'}
+                    </p>
                     <p className="mt-1">
                       In Windows <strong>Settings → Network &amp; internet → Wi-Fi</strong>, open this network and set{' '}
                       <strong>Network profile type</strong> to <strong>Private</strong>. Only do that on a network you

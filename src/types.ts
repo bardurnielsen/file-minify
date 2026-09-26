@@ -25,8 +25,10 @@ export type VideoResolution = '1440' | '1080' | '720' | '480';
 export interface PhoneAccess {
   enabled: boolean;
   urls: string[];
-  /** Windows treats the network of the first address as Public: its firewall blocks phones. */
+  /** Windows treats the network of the first address as Public. */
   publicNetwork?: boolean;
+  /** Then: whether FileMinify's firewall rules block phones there ('unknown': couldn't read them). */
+  firewall?: 'blocks' | 'allows' | 'unknown';
 }
 
 /** The desktop app's own check for a newer release (desktop.updateStatus()). */

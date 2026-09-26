@@ -2,7 +2,12 @@ import type { Page } from '@playwright/test';
 import { expect, open, test } from './helpers';
 import { callsTo, fakeDesktop } from './desktop-fake';
 
-type Phone = { enabled: boolean; urls: string[]; publicNetwork?: boolean };
+type Phone = {
+  enabled: boolean;
+  urls: string[];
+  publicNetwork?: boolean;
+  firewall?: 'blocks' | 'allows' | 'unknown';
+};
 
 // Only the desktop app's server tells the app about phone access (GET
 // /config, and only to the PC itself). The Docker stack never does, so it is
@@ -104,7 +109,7 @@ test('a stray ?phone on a server without phone access shows nothing', async ({ p
 });
 
 test('on a network Windows calls Public, the panel says why phones can’t connect and how to fix it', async ({ page }) => {
-  await withPhone(page, { ...ON, publicNetwork: true });
+  await withPhone(page, { ...ON, publicNetwork: true, firewall: 'blocks' });
   await open(page);
   await page.getByRole('button', { name: 'Use on phone' }).click();
   const warning = panel(page).getByRole('alert');
@@ -115,7 +120,7 @@ test('on a network Windows calls Public, the panel says why phones can’t conne
 });
 
 test('in the app, the Public-network warning opens Windows’ network settings, and goes once it is Private', async ({ page }) => {
-  let phone: Phone = { ...ON, publicNetwork: true };
+  let phone: Phone = { ...ON, publicNetwork: true, firewall: 'blocks' };
   await withPhone(page, () => phone);
   await fakeDesktop(page);
   await open(page);
@@ -134,4 +139,21 @@ test('on a Private network, no such warning', async ({ page }) => {
   await page.getByRole('button', { name: 'Use on phone' }).click();
   await expect(panel(page).getByRole('img', { name: /^QR code for/ })).toBeVisible();
   await expect(panel(page).getByRole('alert')).toHaveCount(0);
+});
+
+test('a Public network whose firewall lets FileMinify in gets no warning', async ({ page }) => {
+  await withPhone(page, { ...ON, publicNetwork: true, firewall: 'allows' });
+  await open(page);
+  await page.getByRole('button', { name: 'Use on phone' }).click();
+  await expect(panel(page).getByRole('img', { name: /^QR code for/ })).toBeVisible();
+  await expect(panel(page).getByRole('alert')).toHaveCount(0);
+});
+
+test('when the firewall rules can’t be read, the Public warning only says what to try', async ({ page }) => {
+  await withPhone(page, { ...ON, publicNetwork: true, firewall: 'unknown' });
+  await open(page);
+  await page.getByRole('button', { name: 'Use on phone' }).click();
+  const warning = panel(page).getByRole('alert');
+  await expect(warning).toContainText('If phones can’t connect, that’s why');
+  await expect(warning).not.toContainText('can’t connect yet');
 });
