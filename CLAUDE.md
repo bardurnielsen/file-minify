@@ -144,7 +144,9 @@ Electron 44.4.5 (Node 24), electron-builder 26.16.1, electron-updater 6.8.9,
 pinned exactly. This is the contract the pieces are built against:
 
 - **Layout.**
-  - The asar holds only `desktop/main.cjs`, `preload.cjs` and `lib/*.cjs`.
+  - The asar holds only `desktop/main.cjs`, `preload.cjs`, `lib/*.cjs` and
+    `lib/assets/` (the tray icon, 16 px plus `@1.5x`/`@2x`, rendered from
+    `public/icons/icon-512.png`).
   - Beside it, as plain `extraResources`: `resources\backend` (the backend
     staged by `desktop/build.sh`, with its own `npm ci --omit=dev`, sharp
     included), `resources\dist`, `resources\tools\gs` and `resources\magick`.
@@ -164,6 +166,30 @@ pinned exactly. This is the contract the pieces are built against:
   3. The bundled Ghostscript and `MAGICK_CONFIGURE_PATH` are set.
   4. settings.env overrides all of that.
   5. `FM_VERSION` comes from `app.getVersion()`.
+- **Main process** (`desktop/main.cjs`, `lib/`): `config` (data dir,
+  settings.env read and `saveHost` exactly as launcher.js did, the server's
+  env), `log` (`logs\desktop.log`, rotated at 5 MB, two kept; the server's
+  output goes there too), `server`, `window`, `tray`, `ipc`, `updater`.
+  - Start: single-instance lock (a second launch shows the window), server,
+    then the window. A port in use is a dialog naming `PORT=`, then quit. A
+    server that dies is restarted once; again within 10 minutes, the user
+    picks Restart or Quit.
+  - Close button: phone access off quits (asking first if busy); on, the
+    window hides to the tray, with a one-time balloon. Tray: Open, Phone
+    access, Open log folder, Quit. Quitting sends `shutdown` first, and an
+    update's `quitAndInstall` skips the question and the tray.
+  - Window: size and place in `app\window.json`, restored only if still on a
+    screen; no menu; new windows denied, only `https://github.com/bardurnielsen/file-minify/`
+    links open in the browser; navigation stays on the app's origin; every
+    permission but `clipboard-sanitized-write` denied. Downloads save
+    straight to Downloads (`name (1).ext` when taken); the page gets only an
+    opaque id, never a path.
+  - Markers in `app\`: `first-run-done` (the tools question was asked; not
+    asked with `FM_NO_WINDOW`), `tray-hint-shown`, and `disable-gpu`, written
+    when the GPU process fails to launch or crashes: the app relaunches
+    without GPU acceleration (unless busy; then from the next start).
+  - Updates: electron-updater, nothing automatic; checked when the page asks
+    and every 12 h (cached 12 h). Any check error means "no update".
 - **Messages over `process.parentPort`** (`backend/utils/desktop.js`, which
   does nothing outside the app):
   - Server to main: `{type:'listening',host,port}`, `{type:'listen-error',code}`.
@@ -196,8 +222,11 @@ pinned exactly. This is the contract the pieces are built against:
   - `e2e/tests/desktop-fake.ts` fakes the bridge for the Docker stack;
     `DESKTOP_BRIDGE_KEYS` there is what the real preload must expose.
 - **settings.env keys added:** `FM_UPDATE_PRERELEASE=1` (testers get release
-  candidates), `FM_DISABLE_GPU=1`. For CI only: `FM_UPDATE_FEED`
-  (127.0.0.1 URLs only) and `FM_NO_WINDOW=1` (server and tray, no window).
+  candidates), `FM_DISABLE_GPU=1`, `FM_UPDATE_CHECK=0` (never look). For
+  CI only: `FM_UPDATE_FEED` (a generic feed; `http://127.0.0.1` or
+  `http://localhost` only, anything else is ignored) and `FM_NO_WINDOW=1`
+  (server and tray, no window). `FM_NO_WINDOW` and `FM_DISABLE_GPU` are
+  also read from the environment.
 - **Every release must stay updatable from 1.0.3.**
   - It is the `releases/latest` (published, not a draft, not a prerelease).
   - Its asset is named exactly `FileMinify-Setup-X.Y.Z.exe`, with a matching
