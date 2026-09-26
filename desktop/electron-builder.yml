@@ -1,0 +1,56 @@
+# electron-builder settings for the Windows desktop app (desktop/build.sh).
+# appId must NEVER change: the uninstall key (and so winget's ProductCode and
+# every update) is a GUID derived from it.
+appId: com.bardurnielsen.fileminify
+productName: FileMinify          # the exe's FileDescription: firewall prompt, Task Manager
+executableName: FileMinify
+copyright: Copyright (c) 2025 Bárður Nielsen
+directories:
+  output: ../build/desktop
+  buildResources: build
+files:
+  - main.cjs
+  - preload.cjs
+  - lib/**
+  - package.json
+asar: true
+# Beside the app, as plain files: the server runs from here in a
+# utilityProcess, and the tools are executables that can't run from an asar.
+extraResources:
+  - { from: ../build/stage/backend, to: backend }
+  - { from: ../dist, to: dist }
+  - { from: ../build/stage/tools, to: tools }
+  - { from: magick, to: magick }
+win:
+  target: [{ target: nsis, arch: [x64] }]
+  icon: build/icon.png
+  requestedExecutionLevel: asInvoker
+  verifyUpdateCodeSignature: false
+nsis:
+  # The name 1.0.3's in-app updater looks for (backend/utils/update.js in 1.0.x):
+  # every release must keep it.
+  artifactName: FileMinify-Setup-${version}.${ext}
+  oneClick: true
+  perMachine: false
+  allowElevation: false
+  runAfterFinish: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: FileMinify
+  uninstallDisplayName: FileMinify
+  deleteAppDataOnUninstall: false
+# Only for the app-update.yml electron-updater reads; releases are uploaded by
+# the release job, never by electron-builder (it would make drafts).
+publish:
+  provider: github
+  owner: bardurnielsen
+  repo: file-minify
+  releaseType: release
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  grantFileProtocolExtraPrivileges: false

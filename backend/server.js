@@ -24,6 +24,7 @@ const { TEMP_DIR } = require('./utils/paths');
 const { toolReport } = require('./utils/tools');
 const { lanAddresses, fromThisMachine } = require('./utils/network');
 const nativeRoutes = require('./routes/native');
+const desktop = require('./utils/desktop');
 const { missingTools, installingTools } = require('./utils/tools');
 
 const PORT = process.env.PORT || 4000;
@@ -219,10 +220,21 @@ app.use(errorHandler);
 // Start server
 const server = app.listen(PORT, HOST, () => {
   logger.info(`Server running on ${HOST || 'all interfaces'}, port ${PORT}`);
+  // The desktop app opens its window only once its own server answers.
+  desktop.send({ type: 'listening', host: HOST || '0.0.0.0', port: server.address().port });
   for (const [name, found] of Object.entries(toolReport())) {
     if (found) logger.info(`Tool ${name}: ${found}`);
     else logger.warn(`Tool ${name}: NOT FOUND - features using it will fail`);
   }
+});
+
+// In the desktop app a port already in use (EADDRINUSE) is reported to the
+// app, which says so, rather than crashing. Elsewhere it throws, as before.
+server.on('error', (err) => {
+  if (!desktop.inDesktop) throw err;
+  logger.error(`Server could not start: ${err.message}`);
+  desktop.send({ type: 'listen-error', code: err.code || 'UNKNOWN' });
+  process.exit(1);
 });
 
 // In Docker nginx takes in the whole upload before passing it on, quickly.

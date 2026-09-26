@@ -31,3 +31,6 @@ e2e/playwright-report/
 
 # Windows installer build (windows/build.sh)
 /build/
+
+# Desktop app build (desktop/build.sh)
+/desktop/node_modules/

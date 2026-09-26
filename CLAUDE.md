@@ -135,6 +135,60 @@ What nginx did and native mode now does itself:
   because a phone's upload now streams straight into Node.
 - **`X-Frame-Options: DENY`** and nginx's CSP.
 
+### Desktop app (2.0, in progress: `desktop/`, replaces `windows/`)
+
+Electron 44.4.5 (Node 24), electron-builder 26.16.1, electron-updater 6.8.9,
+pinned exactly. This is the contract the pieces are built against:
+
+- **Layout.**
+  - The asar holds only `desktop/main.cjs`, `preload.cjs` and `lib/*.cjs`.
+  - Beside it, as plain `extraResources`: `resources\backend` (the backend
+    staged by `desktop/build.sh`, with its own `npm ci --omit=dev`, sharp
+    included), `resources\dist`, `resources\tools\gs` and `resources\magick`.
+  - Installed per user by a oneClick NSIS installer to
+    `%LOCALAPPDATA%\Programs\fileminify-app\FileMinify.exe`.
+  - `appId com.bardurnielsen.fileminify` never changes: the uninstall key and
+    winget's ProductCode derive from it.
+  - The data folder is `%LOCALAPPDATA%\FileMinify`, as in 1.0.x (settings.env,
+    logs, temp), plus `app\` for Electron's own.
+- **Server.** A `utilityProcess` runs `resources\backend\server.js`, with an
+  env built by main:
+  1. Inherited `FM_*`, `MAGICK_*`, `ELECTRON_RUN_AS_NODE` and `NODE_OPTIONS`
+     are dropped.
+  2. The 1.0.x launcher defaults apply (PORT 3051, FM_HOST 127.0.0.1,
+     FM_TRUST_PROXY 0, MAX_FILE_SIZE 500MB, PROCESS_TIMEOUT_MIN 30,
+     FM_DATA_DIR, FM_STATIC_DIR).
+  3. The bundled Ghostscript and `MAGICK_CONFIGURE_PATH` are set.
+  4. settings.env overrides all of that.
+  5. `FM_VERSION` comes from `app.getVersion()`.
+- **Messages over `process.parentPort`** (`backend/utils/desktop.js`, which
+  does nothing outside the app):
+  - Server to main: `{type:'listening',host,port}`, `{type:'listen-error',code}`.
+  - Main to server: `{type:'install-tools',id}` gets
+    `{type:'install-tools',id,outcome,packages}`; `{type:'missing-tools',id}`
+    gets `{type:'missing-tools',id,missing}`; `{type:'shutdown'}` closes the
+    server and exits.
+  - The window loads `http://127.0.0.1:<port>/` only after `listening`.
+- **Bridge `window.fileminify`** (preload, `contextIsolation` and `sandbox`),
+  typed in `src/lib/native.ts`: `updateStatus()`, `startUpdate()`,
+  `onUpdateProgress(cb)`, `installTools()`, `setPhoneAccess(on)`,
+  `openLogFolder()`, `onDownloadSaved(cb)`, `showDownload(id)`,
+  `setBusy(busy)`.
+  - `ipcMain` handlers accept only the app window from the app origin.
+  - No HTTP endpoint starts a program: `/native/*` goes, and `/config` keeps
+    its read-only `phone`, `version`, `missingTools` and `installingTools`.
+- **settings.env keys added:** `FM_UPDATE_PRERELEASE=1` (testers get release
+  candidates), `FM_DISABLE_GPU=1`. For CI only: `FM_UPDATE_FEED`
+  (127.0.0.1 URLs only) and `FM_NO_WINDOW=1` (server and tray, no window).
+- **Every release must stay updatable from 1.0.3.**
+  - It is the `releases/latest` (published, not a draft, not a prerelease).
+  - Its asset is named exactly `FileMinify-Setup-X.Y.Z.exe`, with a matching
+    `vX.Y.Z` tag, and GitHub's sha256 digest is present.
+  - It installs with no arguments and no elevation, stops the old app
+    itself, and starts the new one.
+  - The installer's `customInit` removes a 1.0.x install *without* running
+    Inno's uninstaller, which would delete settings.env.
+
 ## Invariants — these are fixed bugs, do not regress them
 
 1. **`formats.ts` is the source of truth.** Never offer a file its own format, or
