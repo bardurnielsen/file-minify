@@ -101,3 +101,25 @@ test('missing tools are named with what they break, and can be installed', async
   // The notice checks again every 10 s and goes once nothing is missing.
   await expect(warning).toHaveCount(0, { timeout: 15_000 });
 });
+
+test('an install that ends with a tool still missing gives the button back', async ({ page }) => {
+  await asWindowsBuild(page, { latest: null });
+  // Setup's window came and went, and LibreOffice is still missing (a declined prompt).
+  await page.route('**/api/config', async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      json: { ...(await response.json()), version: '1.0.2', missingTools: ['libreoffice'], installingTools: false },
+    });
+  });
+  await page.route('**/api/native/tools', (route) =>
+    route.fulfill({ json: { success: true, packages: ['TheDocumentFoundation.LibreOffice'] } })
+  );
+  await open(page);
+
+  const warning = page.getByRole('status').filter({ hasText: 'A tool FileMinify needs is missing' });
+  await warning.getByRole('button', { name: 'Install it' }).click();
+  await expect(warning).toContainText('A window shows the install');
+  await expect(warning.getByRole('button', { name: 'Install it' })).toBeVisible({ timeout: 15_000 });
+  await expect(warning).not.toContainText('A window shows the install');
+});

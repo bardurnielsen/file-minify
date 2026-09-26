@@ -113,7 +113,9 @@ export const ToolsNotice: React.FC = () => {
   const [installing, setInstalling] = useState(false);
   const [failed, setFailed] = useState(false);
 
-  // While the install runs, look again every few seconds.
+  // While the install runs, look again every few seconds. Once its window has
+  // closed, stop: what is still missing (a declined prompt, say) gets its
+  // button back.
   useEffect(() => {
     if (!installing) return;
     const timer = setInterval(() => {
@@ -121,6 +123,7 @@ export const ToolsNotice: React.FC = () => {
         if (!config?.missingTools) return;
         const { version } = useFiles.getState();
         useFiles.getState().setNative({ version, missingTools: config.missingTools });
+        if (!config.installingTools) setInstalling(false);
       });
     }, POLL_MS);
     return () => clearInterval(timer);

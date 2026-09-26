@@ -65,8 +65,10 @@ if (fs.existsSync(path.join(GS_BIN, 'gswin64c.exe'))) {
 
 // This installation's version (windows/build.sh), for the footer and the
 // update check.
+// Always read, never inherited: setup starts the new FileMinify with setup's
+// own environment, which could otherwise carry the old version along.
 try {
-  process.env.FM_VERSION ||= fs.readFileSync(path.join(__dirname, 'version.txt'), 'utf8').trim();
+  process.env.FM_VERSION = fs.readFileSync(path.join(__dirname, 'version.txt'), 'utf8').trim();
 } catch {
   // a development copy
 }
@@ -223,8 +225,9 @@ const main = async () => {
   // Nothing is serving, so a FileMinify window still open is an orphan: left
   // behind when setup replaced FileMinify during an update, or after a crash.
   // Close it, or the new window would open inside it and its closing would no
-  // longer stop FileMinify.
-  if (findEdge() && !process.env.FM_NO_BROWSER) await powershell(CLOSE_WINDOWS);
+  // longer stop FileMinify. Done alongside the server's start, not before it
+  // (PowerShell takes a second or two); only the window has to wait for it.
+  const orphansClosed = findEdge() && !process.env.FM_NO_BROWSER ? powershell(CLOSE_WINDOWS) : Promise.resolve();
 
   process.title = 'FileMinify - close this window to stop';
   // Before it is up, a crash is a failed start and waits to be read. After,
@@ -246,6 +249,7 @@ const main = async () => {
   for (let i = 0; i < 60 && !failed; i++) {
     if (await healthy()) {
       started = true;
+      await orphansClosed;
       console.log(`\nFileMinify is running at ${APP_URL}`);
       const win = openApp(page);
       if (lan()) {

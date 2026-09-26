@@ -109,8 +109,9 @@ const PIECES = [
   { key: 'ghostscript', tools: ['gs'], winget: null },
 ];
 
-const vcRuntimeFound = () =>
-  fs.existsSync(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'vcruntime140_1.dll'));
+// The same two files setup checks for (HasVCRuntime in windows/fileminify.iss).
+const vcRuntimeFound = () => ['vcruntime140_1.dll', 'msvcp140.dll'].every((dll) =>
+  fs.existsSync(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', dll)));
 
 const missingTools = () => {
   if (process.platform !== 'win32') return [];
@@ -120,20 +121,44 @@ const missingTools = () => {
   return missing.map(({ key, winget }) => ({ key, winget }));
 };
 
+const WINGET = path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WindowsApps', 'winget.exe');
+let toolsInstall = null; // the running install, until its window closes
+
+const installingTools = () => toolsInstall !== null;
+
 // Install packages with winget in a console window of its own, so the user
 // sees it working and answers Windows' permission prompts. The ids come from
-// PIECES above, never from a request. Returns at once; the tools are found
-// on their next lookup, with no restart.
+// PIECES above, never from a request. The tools are found on their next
+// lookup, with no restart. Returns 'started', 'running' (one already is) or
+// 'no-winget'.
+//
+// The window comes from `start`. A detached child of Node gets no console of
+// its own (libuv: DETACHED_PROCESS) and NUL for its output, so cmd run
+// directly would show nothing. `start /wait` opens a real console for the
+// inner cmd, and keeps this child alive until that window closes, which is
+// how installingTools() knows. After /s strips the outer quotes, the outer
+// cmd sees `start "..." /wait cmd.exe /d /s /c "<command>"`: the & and >nul
+// sit inside quotes, so only the inner cmd acts on them.
 const installTools = (packages) => {
+  if (toolsInstall) return 'running';
+  if (!fs.existsSync(WINGET)) return 'no-winget';
   const steps = packages.map((id) =>
     `echo. & echo Installing ${id}... & winget install --exact --id ${id} --accept-package-agreements --accept-source-agreements`);
   const command = ['title Installing the tools FileMinify needs', ...steps,
     'echo. & echo Done. This window closes by itself. & timeout /t 5 >nul'].join(' & ');
-  const child = spawn('cmd.exe', ['/d', '/s', '/c', `"${command}"`], {
-    detached: true, stdio: 'ignore', windowsVerbatimArguments: true,
+  toolsInstall = spawn('cmd.exe',
+    ['/d', '/s', '/c', `"start "FileMinify" /wait cmd.exe /d /s /c "${command}""`],
+    { detached: true, stdio: 'ignore', windowsVerbatimArguments: true });
+  const done = () => {
+    toolsInstall = null;
+  };
+  toolsInstall.once('error', (err) => {
+    logger.error(`Could not start the tools install: ${err.message}`);
+    done();
   });
-  child.once('error', (err) => logger.error(`Could not start the tools install: ${err.message}`));
-  child.unref();
+  toolsInstall.once('close', done);
+  toolsInstall.unref();
+  return 'started';
 };
 
-module.exports = { resolveTool, toolReport, missingTools, installTools };
+module.exports = { resolveTool, toolReport, missingTools, installTools, installingTools };

@@ -5,13 +5,23 @@ const { updateStatus, installUpdate } = require('../utils/update');
 const { missingTools, installTools } = require('../utils/tools');
 
 // The Windows build's own endpoints (mounted only when FM_STATIC_DIR is set).
-// They start programs on the PC, so they answer only the PC itself: a phone
-// or another machine gets a 404, as if they did not exist. The Origin and
-// Host checks in server.js keep other web pages and rebound names out.
+// They start programs on the PC, so they answer only the app on the PC
+// itself; anything else gets a 404, as if they did not exist:
+// - from this machine (not a phone or another PC);
+// - addressed as localhost, as the app window always is. The PC's own name
+//   passes server.js's Host check, and a LAN attacker faking name answers
+//   (mDNS/LLMNR) could point it at 127.0.0.1;
+// - a POST carries X-FileMinify. A custom header makes a browser ask first
+//   (CORS preflight) on any other page's behalf, and that is never granted,
+//   on top of server.js's Origin check.
+const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
 const router = express.Router();
 
 router.use((req, res, next) =>
-  fromThisMachine(req) ? next() : res.status(404).json({ success: false, error: 'Not found' }));
+  fromThisMachine(req) && LOOPBACK_HOST.test(req.headers.host || '') &&
+  (req.method === 'GET' || req.get('X-FileMinify') === '1')
+    ? next()
+    : res.status(404).json({ success: false, error: 'Not found' }));
 
 const windowsOnly = (res) =>
   process.platform === 'win32' ||
@@ -34,11 +44,16 @@ router.post('/update', async (req, res) => {
   }
 });
 
-// Install whatever tools are missing, in a window the user can watch.
+// Install whatever tools are missing, in a window the user can watch. While
+// that window is open, /config says installingTools.
 router.post('/tools', (req, res) => {
   if (!windowsOnly(res)) return;
   const packages = [...new Set(missingTools().map((m) => m.winget).filter(Boolean))];
-  if (packages.length > 0) installTools(packages);
+  const outcome = packages.length > 0 ? installTools(packages) : 'started';
+  if (outcome === 'no-winget') {
+    return res.status(424).json({ success: false, error: 'winget is not installed' });
+  }
+  if (outcome === 'running') return res.status(409).json({ success: false, error: 'Already installing' });
   res.status(200).json({ success: true, packages });
 });
 

@@ -24,7 +24,7 @@ const { TEMP_DIR } = require('./utils/paths');
 const { toolReport } = require('./utils/tools');
 const { lanAddresses, fromThisMachine } = require('./utils/network');
 const nativeRoutes = require('./routes/native');
-const { missingTools } = require('./utils/tools');
+const { missingTools, installingTools } = require('./utils/tools');
 
 const PORT = process.env.PORT || 4000;
 // FM_HOST narrows where it listens; the Windows launcher uses 127.0.0.1 unless
@@ -190,6 +190,7 @@ api.get('/config', async (req, res) => {
       },
       version: process.env.FM_VERSION || null,
       missingTools: missingTools().map((m) => m.key),
+      installingTools: installingTools(),
     }),
   });
 });

@@ -138,6 +138,8 @@ export interface ServerConfig {
   phone?: PhoneAccess;
   version?: string;
   missingTools?: MissingTool[];
+  /** A tools install window is open on the PC. */
+  installingTools?: boolean;
 }
 
 const MISSING_TOOLS: MissingTool[] = ['ffmpeg', 'imagemagick', 'libreoffice', 'ghostscript', 'vcruntime'];
@@ -165,11 +167,17 @@ export const fetchConfig = async (): Promise<ServerConfig | null> => {
       missingTools: Array.isArray(json.missingTools)
         ? json.missingTools.filter((t: unknown): t is MissingTool => MISSING_TOOLS.includes(t as MissingTool))
         : undefined,
+      installingTools: json.installingTools === true,
     };
   } catch {
     return null;
   }
 };
+
+// The Windows build's own endpoints want this on a POST: a header no other
+// page could send without a CORS preflight, which is never granted
+// (routes/native.js).
+const NATIVE_POST = { 'X-FileMinify': '1' };
 
 /** The Windows build: is there a newer release? Null when it can't say. */
 export const fetchUpdateStatus = async (): Promise<UpdateStatus | null> => {
@@ -186,12 +194,12 @@ export const fetchUpdateStatus = async (): Promise<UpdateStatus | null> => {
 
 /** Download the newer setup and start it. Resolves once setup is running. */
 export const startUpdate = async (): Promise<void> => {
-  const response = await fetch(`${API}/native/update`, { method: 'POST' });
+  const response = await fetch(`${API}/native/update`, { method: 'POST', headers: NATIVE_POST });
   if (!response.ok) throw new Error(`Update failed (${response.status})`);
 };
 
 /** Install the missing tools, in a window of their own on the PC. */
 export const installMissingTools = async (): Promise<void> => {
-  const response = await fetch(`${API}/native/tools`, { method: 'POST' });
+  const response = await fetch(`${API}/native/tools`, { method: 'POST', headers: NATIVE_POST });
   if (!response.ok) throw new Error(`Could not start the install (${response.status})`);
 };
