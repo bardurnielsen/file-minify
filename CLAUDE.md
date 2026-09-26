@@ -101,6 +101,11 @@ The launcher opens the app in Edge's app mode with a profile of its own
 window closed, and that stops FileMinify. With LAN access on it doesn't:
 phones may still be using it, so the minimised console window is the off
 switch.
+Setup run by hand (a downloaded .exe) offers a "tools" task, shown only when
+one is missing, that installs FFmpeg, ImageMagick, LibreOffice and the VC++
+runtime through winget in a visible window (`InstallMissingTools` in the .iss).
+It never runs in a silent install: that is winget itself (tools already
+there) or CI.
 `windows/build.sh` stages node.exe, the app and Ghostscript into an Inno Setup
 installer (`windows/fileminify.iss`, per-user). The winget manifest pulls in
 FFmpeg, ImageMagick, LibreOffice and the VC++ runtime. Ghostscript is bundled

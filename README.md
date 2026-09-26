@@ -139,15 +139,21 @@ front door that skips nginx and the rate limiting.
 
 ### On Windows, without Docker
 
-For one PC at home there is a native Windows build, no Docker needed:
+For one PC at home there is a native Windows build, no Docker needed. Either:
 
-```powershell
-winget install BardurNielsen.FileMinify
-```
+- **Download and double-click** `FileMinify-Setup-<version>.exe` from the
+  [Releases](https://github.com/bardurnielsen/file-minify/releases) page and
+  click through. Setup offers to fetch whatever is missing of FFmpeg,
+  ImageMagick, LibreOffice and the VC++ runtime (up to about 650 MB), through
+  the winget built into Windows 10 and 11, in a window that shows the progress.
+- **Or, in a terminal:**
+  ```powershell
+  winget install BardurNielsen.FileMinify
+  ```
+  Winget brings the same tools as dependencies.
 
-Winget brings FFmpeg, ImageMagick, LibreOffice and the VC++ runtime along with
-it, and asks for administrator rights for those. FileMinify itself installs
-for the current user only. Start it from the Start menu: FileMinify opens in a
+Either way Windows asks for administrator rights for some of the tools;
+FileMinify itself installs for the current user only. Start it from the Start menu: FileMinify opens in a
 window of its own (Edge's app mode, at **http://localhost:3051**), and closing
 that window stops it. A console window sits minimised in the taskbar beside it
 with the log.
@@ -170,8 +176,8 @@ with the log.
 - **Settings** (for example `MAX_FILE_SIZE=200MB` or `PROCESS_TIMEOUT_MIN=60`) go
   in `%LOCALAPPDATA%\FileMinify\settings.env`, one `KEY=value` per line. The
   defaults match the ship's server: 500 MB per file and 30 minutes per job.
-- The installer is also on the [Releases](https://github.com/bardurnielsen/file-minify/releases)
-  page. Installed that way, add the tools yourself:
+- **If setup couldn't fetch a tool** (declined, offline, or no winget), running
+  setup again retries. Or install them yourself:
   `winget install Gyan.FFmpeg ImageMagick.ImageMagick TheDocumentFoundation.LibreOffice Microsoft.VCRedist.2015+.x64`.
 
 ## Development
