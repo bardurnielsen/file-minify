@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AlertTriangle, ArrowUpCircle, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useFiles } from '../../hooks/useFiles';
-import { fetchConfig, installMissingTools, startUpdate } from '../../lib/api';
+import { fetchConfig, installMissingTools, startUpdate, type ToolsInstallProblem } from '../../lib/api';
 import { remindLater, skipVersion } from '../../lib/updateNotice';
 import type { MissingTool } from '../../types';
 
@@ -111,7 +111,7 @@ const POLL_MS = 10_000;
 export const ToolsNotice: React.FC = () => {
   const missing = useFiles((s) => s.missingTools);
   const [installing, setInstalling] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [problem, setProblem] = useState<ToolsInstallProblem | null>(null);
 
   // While the install runs, look again every few seconds. Once its window has
   // closed, stop: what is still missing (a declined prompt, say) gets its
@@ -133,10 +133,10 @@ export const ToolsNotice: React.FC = () => {
   const canInstall = missing.some((t) => INSTALLABLE.includes(t));
 
   const install = () => {
-    setFailed(false);
+    setProblem(null);
     installMissingTools().then(
       () => setInstalling(true),
-      () => setFailed(true)
+      (why: ToolsInstallProblem) => (why === 'running' ? setInstalling(true) : setProblem(why))
     );
   };
 
@@ -158,7 +158,15 @@ export const ToolsNotice: React.FC = () => {
             when it’s done.
           </p>
         )}
-        {failed && <p className="mt-1">The install could not be started. Run FileMinify’s setup again instead.</p>}
+        {problem === 'no-winget' && (
+          <p className="mt-1">
+            Windows’ <strong>App Installer</strong> (winget) is missing, so FileMinify can’t fetch it. Install
+            App Installer from the Microsoft Store, then try again.
+          </p>
+        )}
+        {problem === 'failed' && (
+          <p className="mt-1">The install could not be started. Run FileMinify’s setup again instead.</p>
+        )}
       </div>
       {canInstall && !installing && (
         <Button variant="primary" size="sm" onClick={install}>

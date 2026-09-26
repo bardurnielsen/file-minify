@@ -45,15 +45,14 @@ router.post('/update', async (req, res) => {
 });
 
 // Install whatever tools are missing, in a window the user can watch. While
-// that window is open, /config says installingTools.
+// that window is open, /config says installingTools. No winget, or an install
+// already running, are answers rather than errors (`problem`), so the page
+// has something to say and the browser logs no failed request.
 router.post('/tools', (req, res) => {
   if (!windowsOnly(res)) return;
   const packages = [...new Set(missingTools().map((m) => m.winget).filter(Boolean))];
   const outcome = packages.length > 0 ? installTools(packages) : 'started';
-  if (outcome === 'no-winget') {
-    return res.status(424).json({ success: false, error: 'winget is not installed' });
-  }
-  if (outcome === 'running') return res.status(409).json({ success: false, error: 'Already installing' });
+  if (outcome !== 'started') return res.status(200).json({ success: false, problem: outcome });
   res.status(200).json({ success: true, packages });
 });
 

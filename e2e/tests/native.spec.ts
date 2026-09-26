@@ -123,3 +123,15 @@ test('an install that ends with a tool still missing gives the button back', asy
   await expect(warning.getByRole('button', { name: 'Install it' })).toBeVisible({ timeout: 15_000 });
   await expect(warning).not.toContainText('A window shows the install');
 });
+
+test('without winget, the tools notice says what to get instead of a vague failure', async ({ page }) => {
+  await asWindowsBuild(page, { missingTools: ['imagemagick'], latest: null });
+  await page.route('**/api/native/tools', (route) =>
+    route.fulfill({ json: { success: false, problem: 'no-winget' } })
+  );
+  await open(page);
+  const warning = page.getByRole('status').filter({ hasText: 'A tool FileMinify needs is missing' });
+  await warning.getByRole('button', { name: 'Install it' }).click();
+  await expect(warning).toContainText('App Installer');
+  await expect(warning).not.toContainText('could not be started');
+});

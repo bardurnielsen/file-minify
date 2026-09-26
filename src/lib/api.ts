@@ -198,8 +198,19 @@ export const startUpdate = async (): Promise<void> => {
   if (!response.ok) throw new Error(`Update failed (${response.status})`);
 };
 
-/** Install the missing tools, in a window of their own on the PC. */
+/** Why installing the tools could not start: winget is missing, one is already running, or anything else. */
+export type ToolsInstallProblem = 'no-winget' | 'running' | 'failed';
+
+/** Install the missing tools, in a window of their own on the PC. Rejects with a ToolsInstallProblem. */
 export const installMissingTools = async (): Promise<void> => {
-  const response = await fetch(`${API}/native/tools`, { method: 'POST', headers: NATIVE_POST });
-  if (!response.ok) throw new Error(`Could not start the install (${response.status})`);
+  let response: Response;
+  try {
+    response = await fetch(`${API}/native/tools`, { method: 'POST', headers: NATIVE_POST });
+  } catch {
+    throw 'failed' satisfies ToolsInstallProblem;
+  }
+  const json = await response.json().catch(() => null);
+  if (json?.success === true) return;
+  if (json?.problem === 'no-winget' || json?.problem === 'running') throw json.problem as ToolsInstallProblem;
+  throw 'failed' satisfies ToolsInstallProblem;
 };

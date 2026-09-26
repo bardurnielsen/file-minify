@@ -121,7 +121,18 @@ const missingTools = () => {
   return missing.map(({ key, winget }) => ({ key, winget }));
 };
 
-const WINGET = path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WindowsApps', 'winget.exe');
+// winget.exe in WindowsApps is an app execution alias, a reparse point that
+// Node's stat (so fs.existsSync) cannot read: it reported winget missing on a
+// PC that has it. Listing the folder sees it.
+const WINDOWS_APPS = path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WindowsApps');
+const wingetFound = () => {
+  try {
+    return fs.readdirSync(WINDOWS_APPS).some((name) => name.toLowerCase() === 'winget.exe');
+  } catch {
+    return false;
+  }
+};
+
 let toolsInstall = null; // the running install, until its window closes
 
 const installingTools = () => toolsInstall !== null;
@@ -141,7 +152,10 @@ const installingTools = () => toolsInstall !== null;
 // sit inside quotes, so only the inner cmd acts on them.
 const installTools = (packages) => {
   if (toolsInstall) return 'running';
-  if (!fs.existsSync(WINGET)) return 'no-winget';
+  if (!wingetFound()) {
+    logger.warn(`winget not found in ${WINDOWS_APPS}`);
+    return 'no-winget';
+  }
   const steps = packages.map((id) =>
     `echo. & echo Installing ${id}... & winget install --exact --id ${id} --accept-package-agreements --accept-source-agreements`);
   const command = ['title Installing the tools FileMinify needs', ...steps,
