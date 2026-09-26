@@ -65,10 +65,12 @@ const check = () => {
           latest: { version, notes: `https://github.com/bardurnielsen/file-minify/releases/tag/v${version}` },
         };
       }
+      // Only an answer is remembered. A failed check (offline, as a ship often
+      // is, or the feed not up yet) is asked again on the next page load.
+      cached = { at: Date.now(), status };
     } catch (err) {
       log.warn(`Update check failed: ${err.message}`);
     }
-    cached = { at: Date.now(), status };
     return status;
   })().finally(() => {
     checking = null;

@@ -138,7 +138,10 @@ const setUpSession = (ses) => {
       const id = crypto.randomUUID();
       downloads.set(id, savePath);
       if (downloads.size > DOWNLOADS_KEPT) downloads.delete(downloads.keys().next().value);
-      log.info(`Saved ${path.basename(savePath)} to Downloads`);
+      // The full path: Windows' Downloads folder can live elsewhere than
+      // %USERPROFILE%\Downloads (moved, or redirected by a company), and this
+      // is where someone helping a user finds out where.
+      log.info(`Saved ${savePath}`);
       send('download:saved', { id, name: path.basename(savePath) });
     });
   });

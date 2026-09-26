@@ -1,5 +1,5 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from './app';
 
@@ -22,7 +22,11 @@ test('a result downloads straight to the Downloads folder, and the app says so',
   await expect(toast).toBeVisible();
   const saved = (await toast.textContent())!.replace(/^Saved to Downloads: /, '').trim();
   expect(saved).toContain(base);
-  const file = join(homedir(), 'Downloads', saved);
+  // Windows' Downloads folder, where the app saves (app.getPath('downloads')):
+  // not always %USERPROFILE%\Downloads; on the CI runner it isn't.
+  const downloads = execFileSync('powershell.exe', ['-NoProfile', '-Command',
+    "(New-Object -ComObject Shell.Application).Namespace('shell:Downloads').Self.Path"], { encoding: 'utf8' }).trim();
+  const file = join(downloads, saved);
   await expect.poll(() => existsSync(file) && readFileSync(file).length > 0, { message: file }).toBe(true);
   // A PNG, not an error page saved under its name.
   expect(readFileSync(file).subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));

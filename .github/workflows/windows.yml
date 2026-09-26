@@ -217,6 +217,9 @@ jobs:
           # The update feed (electron-updater's generic provider): the build a
           # version up, with its latest.yml.
           python -m http.server 8123 --bind 127.0.0.1 --directory next > feed.log 2>&1 &
+          # The app checks for updates as soon as it starts: the feed must answer first.
+          for i in $(seq 1 30); do curl -fsS -o /dev/null http://127.0.0.1:8123/latest.yml && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8123/latest.yml || { cat feed.log; echo "the update feed never came up"; exit 1; }
           # Stale values like the ones 1.0.3's updater passes on must be
           # ignored. The DevTools port is for the desktop suite.
           FM_VERSION=inherited MAGICK_CONFIGURE_PATH='C:\nope' "$exe" --remote-debugging-port=9222 > app.log 2>&1 &
