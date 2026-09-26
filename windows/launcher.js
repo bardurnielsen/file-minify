@@ -102,7 +102,10 @@ const findEdge = () => [process.env['ProgramFiles(x86)'], process.env.ProgramFil
 
 // The app window. A profile of its own makes it a separate Edge process, so
 // its exit means the window was closed; the user's own Edge windows play no
-// part. Returns that process, or null where a browser tab was opened instead.
+// part. No --window-size: a fixed size ran off smaller or scaled laptop
+// screens, while Edge's own choice fits the screen and is then remembered
+// as the user resizes it. Returns that process, or null where a browser tab
+// was opened instead.
 const openApp = (page = '/') => {
   if (process.env.FM_NO_BROWSER) return null; // CI
   const url = APP_URL + page;
@@ -114,7 +117,7 @@ const openApp = (page = '/') => {
   return spawn(edge, [
     `--app=${url}`,
     `--user-data-dir=${path.join(DATA_DIR, 'window')}`,
-    '--no-first-run', '--no-default-browser-check', '--window-size=1100,860',
+    '--no-first-run', '--no-default-browser-check',
   ], { stdio: 'ignore' });
 };
 
