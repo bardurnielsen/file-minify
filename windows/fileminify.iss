@@ -44,6 +44,7 @@ Source: "..\build\windows\app\*"; DestDir: "{app}"; Flags: ignoreversion recurse
 
 [Icons]
 Name: "{autoprograms}\FileMinify"; Filename: "{app}\node.exe"; Parameters: """{app}\launcher.js"""; WorkingDir: "{app}"; IconFilename: "{app}\fileminify.ico"; Comment: "Compress, convert and merge files"; Flags: runminimized
+Name: "{autoprograms}\FileMinify phone access"; Filename: "{app}\node.exe"; Parameters: """{app}\launcher.js"" --phone-access"; WorkingDir: "{app}"; IconFilename: "{app}\fileminify.ico"; Comment: "Let phones on this Wi-Fi use FileMinify, or stop them"; Flags: runminimized
 Name: "{autodesktop}\FileMinify"; Filename: "{app}\node.exe"; Parameters: """{app}\launcher.js"""; WorkingDir: "{app}"; IconFilename: "{app}\fileminify.ico"; Comment: "Compress, convert and merge files"; Flags: runminimized; Tasks: desktopicon
 
 [Run]

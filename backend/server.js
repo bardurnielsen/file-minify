@@ -22,6 +22,12 @@ const { errorHandler } = require('./middleware/errorHandler');
 const logger = require('./utils/logger');
 const { TEMP_DIR } = require('./utils/paths');
 const { toolReport } = require('./utils/tools');
+const { lanAddresses } = require('./utils/network');
+
+const PORT = process.env.PORT || 4000;
+// FM_HOST narrows where it listens; the Windows launcher uses 127.0.0.1 unless
+// phones on the LAN were allowed in. Unset means every interface, as in Docker.
+const HOST = process.env.FM_HOST || undefined;
 
 // The Windows build has no nginx: FM_STATIC_DIR points at the built frontend
 // and this server delivers it, plus the API under /api as nginx would.
@@ -165,10 +171,22 @@ api.get('/health', (req, res) => {
 
 // Limits the frontend enforces before uploading. They come from the server's
 // environment (MAX_FILE_SIZE), so changing them is a Compose setting, not code.
-api.get('/config', (req, res) => {
+//
+// Natively, the app on the PC itself also gets `phone`: whether phones on the
+// network may connect (FM_HOST), and the addresses they would use, for its
+// "Use on your phone" panel. Asked fresh each time, since a router can hand
+// the PC a new address. Phones and other machines never get it.
+api.get('/config', async (req, res) => {
+  const phoneAccess = HOST !== '127.0.0.1';
   res.status(200).json({
     maxFileBytes: uploadRoutes.MAX_FILE_BYTES,
     maxFiles: uploadRoutes.MAX_FILES,
+    ...(STATIC_DIR && fromThisMachine(req) && {
+      phone: {
+        enabled: phoneAccess,
+        urls: phoneAccess ? (await lanAddresses()).map((a) => `http://${a}:${PORT}`) : [],
+      },
+    }),
   });
 });
 
@@ -190,10 +208,6 @@ if (STATIC_DIR) {
 app.use(errorHandler);
 
 // Start server
-const PORT = process.env.PORT || 4000;
-// FM_HOST narrows where it listens; the Windows launcher uses 127.0.0.1 unless
-// phones on the LAN were allowed in. Unset means every interface, as in Docker.
-const HOST = process.env.FM_HOST || undefined;
 const server = app.listen(PORT, HOST, () => {
   logger.info(`Server running on ${HOST || 'all interfaces'}, port ${PORT}`);
   for (const [name, found] of Object.entries(toolReport())) {

@@ -1,4 +1,4 @@
-import { DownloadRoute, ResultDetails, Route } from '../types';
+import { DownloadRoute, PhoneAccess, ResultDetails, Route } from '../types';
 
 const API = '/api';
 
@@ -132,13 +132,29 @@ export const mergeFiles = async (ids: string[]): Promise<MergeResponse> => {
   return json.data;
 };
 
+export interface ServerConfig {
+  maxFileBytes: number;
+  /** Only from the Windows build, and only to the PC itself. */
+  phone?: PhoneAccess;
+}
+
+const parsePhone = (raw: unknown): PhoneAccess | undefined => {
+  const phone = raw as Partial<PhoneAccess> | null | undefined;
+  if (typeof phone?.enabled !== 'boolean' || !Array.isArray(phone.urls)) return undefined;
+  return {
+    enabled: phone.enabled,
+    urls: phone.urls.filter((u): u is string => typeof u === 'string' && u.startsWith('http://')),
+  };
+};
+
 /** Server limits. Falls back to null when unreachable; callers keep their default. */
-export const fetchConfig = async (): Promise<{ maxFileBytes: number } | null> => {
+export const fetchConfig = async (): Promise<ServerConfig | null> => {
   try {
     const response = await fetch(`${API}/config`);
     if (!response.ok) return null;
     const json = await response.json();
-    return Number(json?.maxFileBytes) > 0 ? { maxFileBytes: Number(json.maxFileBytes) } : null;
+    if (!(Number(json?.maxFileBytes) > 0)) return null;
+    return { maxFileBytes: Number(json.maxFileBytes), phone: parsePhone(json.phone) };
   } catch {
     return null;
   }

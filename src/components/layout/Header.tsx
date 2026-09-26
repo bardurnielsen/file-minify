@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Moon, Sun } from 'lucide-react';
+import { Moon, Smartphone, Sun } from 'lucide-react';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useTheme } from '../theme-provider';
 import { cn } from '../../lib/format';
+import { useFiles } from '../../hooks/useFiles';
+import PhoneDialog from './PhoneDialog';
 
 const Logo: React.FC = () => (
   <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-zinc-900 text-white dark:bg-zinc-50 dark:text-zinc-900">
@@ -27,10 +29,26 @@ const useResolvedTheme = () => {
   return theme === 'system' ? system : theme;
 };
 
+// The Windows launcher opens /?phone after phone access is switched on, so the
+// code to scan is the first thing on screen.
+const PHONE_PARAM = 'phone';
+
 const Header: React.FC = () => {
   const { currentPage, setCurrentPage } = useNavigation();
   const { setTheme } = useTheme();
   const resolved = useResolvedTheme();
+  const phone = useFiles((s) => s.phone);
+  const [phoneOpen, setPhoneOpen] = useState(() =>
+    new URLSearchParams(window.location.search).has(PHONE_PARAM)
+  );
+
+  // Drop ?phone from the address once read, so a reload doesn't reopen it.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has(PHONE_PARAM)) return;
+    url.searchParams.delete(PHONE_PARAM);
+    window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+  }, []);
 
   return (
     <header className="sticky top-0 z-20 border-b border-zinc-200/70 bg-zinc-50/80 backdrop-blur-md dark:border-zinc-800/80 dark:bg-zinc-950/70">
@@ -48,6 +66,16 @@ const Header: React.FC = () => {
         </button>
 
         <nav className="flex items-center gap-1">
+          {phone && (
+            <button
+              type="button"
+              onClick={() => setPhoneOpen(true)}
+              className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium text-zinc-600 transition-colors hover:bg-zinc-200/60 hover:text-zinc-900 focus-ring dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
+            >
+              <Smartphone className="h-4 w-4" />
+              Use on phone
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setCurrentPage(currentPage === 'howitworks' ? 'home' : 'howitworks')}
@@ -70,6 +98,7 @@ const Header: React.FC = () => {
           </button>
         </nav>
       </div>
+      <PhoneDialog open={phoneOpen} onOpenChange={setPhoneOpen} />
     </header>
   );
 };
