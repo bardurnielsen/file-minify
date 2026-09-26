@@ -18,6 +18,6 @@ Dependencies:
 Installers:
 - Architecture: x64
   InstallerUrl: https://github.com/bardurnielsen/file-minify/releases/download/v1.0.1/FileMinify-Setup-1.0.1.exe
-  InstallerSha256: FILL-IN-FROM-THE-RELEASE-JOB
+  InstallerSha256: A8046769B0BE0A2ADBE44609ADEE3AAFE735A6C691F5B08351F408CBBD1CA64A
 ManifestType: installer
 ManifestVersion: 1.12.0
