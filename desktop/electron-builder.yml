@@ -10,14 +10,17 @@ directories:
   buildResources: build
 files:
   - main.cjs
+  - "!after-pack.cjs"
+  - "!build.sh"
   - preload.cjs
   - lib/**
   - package.json
 asar: true
 # Beside the app, as plain files: the server runs from here in a
 # utilityProcess, and the tools are executables that can't run from an asar.
+# The backend is copied by after-pack.cjs (extraResources drops node_modules).
+afterPack: ./after-pack.cjs
 extraResources:
-  - { from: ../build/stage/backend, to: backend }
   - { from: ../dist, to: dist }
   - { from: ../build/stage/tools, to: tools }
   - { from: magick, to: magick }
