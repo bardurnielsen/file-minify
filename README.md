@@ -165,9 +165,11 @@ window quits FileMinify, unless phones may use it (below).
     code to scan with the phone's camera, or to type in. It's worked out
     afresh each time, so it stays right if the router hands out a new one.
   - **Firewall:** Windows asks once whether to let *FileMinify* through its
-    firewall: allow *Private networks*. If phones still can't connect,
-    Windows may treat the Wi-Fi as a *Public* network; set it to *Private* in
-    Windows Settings.
+    firewall: allow *Private networks*. If Windows treats the Wi-Fi as a
+    *Public* network and the firewall keeps phones out there, **Use on
+    phone** says so and offers **Make this Wi-Fi Private** (Windows asks for
+    permission, naming *Windows PowerShell*), or a link to the Wi-Fi
+    settings to change it by hand.
   - **Stopping:** with phone access on, closing the window keeps FileMinify
     running in the tray, so phones aren't cut off. **Quit FileMinify** in the
     tray menu stops it.
