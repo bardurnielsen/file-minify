@@ -72,6 +72,8 @@ const VIDEO_TIER: Record<Tier, string> = {
 const HowItWorks: React.FC = () => {
   const { setCurrentPage } = useNavigation();
   const maxFile = formatBytes(useFiles((s) => s.maxFileBytes));
+  // Only the desktop app reports a version (see Footer).
+  const onThisPc = useFiles((s) => !!s.version);
   return (
     <div className="space-y-12">
       <header>
@@ -207,7 +209,11 @@ const HowItWorks: React.FC = () => {
           </li>
           <li>Video is never enlarged. Choosing 1080p for a 720p clip leaves it at 720p.</li>
           <li>Converting to another format uses that encoder&apos;s standard quality.</li>
-          <li>Files are deleted from the server within an hour. Nothing is kept.</li>
+          <li>
+            {onThisPc
+              ? 'Files never leave this PC, and FileMinify’s copies are deleted within an hour. Nothing is kept.'
+              : 'Files are deleted from the server within an hour. Nothing is kept.'}
+          </li>
         </ul>
       </section>
 

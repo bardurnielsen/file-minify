@@ -78,51 +78,48 @@ which Radix's `asChild` passes a ref through); don't reach for `forwardRef`.
 - `utils/run.js` — every external command goes through `run(name, args)`, which
   asks `utils/tools.js` for the binary. In Docker a name is itself; on Windows
   it is found on PATH, in winget's folders or in the usual install folders.
+  It remembers each running child, so `killAll()` can stop them (the whole
+  tree on Windows) when the desktop app quits.
+- `utils/desktop.js` — the desktop app's messages over `process.parentPort`
+  (see "Desktop app"); does nothing without it.
 - `utils/paths.js` — `TEMP_DIR`, the one place uploads and results live.
 
-### Windows build (`windows/`, `packaging/winget/`)
+### Windows build (`desktop/`, `packaging/winget/`)
 
 The same backend runs natively, serving the built frontend itself (and the API
-under `/api`, as nginx would) when `FM_STATIC_DIR` is set. `windows/launcher.js`
-sets that and the other `FM_*` variables (data dir, `FM_HOST=127.0.0.1`,
-`FM_TRUST_PROXY=0`), with overrides from `%LOCALAPPDATA%\FileMinify\settings.env`.
-**Phone access** (listening beyond `127.0.0.1`) is switched from the Start-menu
-entry "FileMinify phone access" (`launcher.js --phone-access`: it asks, saves
-`FM_HOST` in settings.env, restarts FileMinify and opens `/?phone`). Winget
-installs silently, so the installer's tickbox is out of reach there. In
-native mode `/config` gives the PC itself (never another machine) a `phone`
-block: `enabled`, plus the addresses from `utils/network.js` (virtual
-adapters left out, the default route's first). The header's "Use on phone"
-button and `PhoneDialog` show it as a QR code (`uqr`), asked afresh on every
-opening. `e2e/tests/phone.spec.ts` fakes that block, since Docker never
-sends it.
-The launcher opens the app in Edge's app mode with a profile of its own
-(`%LOCALAPPDATA%\FileMinify\window`), so the Edge process exiting means the
-window closed, and that stops FileMinify. With LAN access on it doesn't:
-phones may still be using it, so the minimised console window is the off
-switch.
-Setup run by hand (a downloaded .exe) offers a "tools" task, shown only when
-one is missing, that installs FFmpeg, ImageMagick, LibreOffice and the VC++
-runtime through winget in a visible window (`InstallMissingTools` in the .iss).
-It never runs in a silent install: that is winget itself (tools already
-there) or CI.
-**`routes/native.js`** is mounted only in native mode and answers only the PC
-itself (a 404 to anything else). It starts programs, so it must stay that way.
-- `/native/update` (`utils/update.js`) compares `FM_VERSION` (the launcher reads
-  it from build.sh's version.txt) with this repo's latest GitHub release. Its
-  POST downloads the `FileMinify-Setup-x.y.z.exe` asset, checks its size and
-  starts it; setup then replaces the running app.
-- `/native/tools` runs winget for whatever `missingTools()` reports, in a
-  visible console.
-
-The app shows these as notices (`Notices.tsx`). "Later" and "Skip" live in
-localStorage (`lib/updateNotice.ts`), while the header's "Update available"
-stays. On a fresh start the launcher closes any orphaned FileMinify window,
-such as the one setup leaves behind during an update. The log also goes to
-`%LOCALAPPDATA%\FileMinify\logs`; the Start menu has an entry for that folder.
-`e2e/tests/native.spec.ts` fakes all of this for the Docker stack.
-`windows/build.sh` stages node.exe, the app and Ghostscript into an Inno Setup
-installer (`windows/fileminify.iss`, per-user). The winget manifest pulls in
+under `/api`, as nginx would) when `FM_STATIC_DIR` is set. The desktop app's
+main process sets that and the other `FM_*` variables (data dir,
+`FM_HOST=127.0.0.1`, `FM_TRUST_PROXY=0`), with overrides from
+`%LOCALAPPDATA%\FileMinify\settings.env` (see "Desktop app").
+- **Phone access** (listening beyond `127.0.0.1`) is switched in the app
+  (`setPhoneAccess` over the bridge, from the phone panel) or in the tray.
+  Main saves `FM_HOST` in settings.env, restarts the server and reloads the
+  window with `/?phone`.
+- **The phone panel.** In native mode `/config` gives the PC itself (never
+  another machine) a `phone` block: `enabled`, plus the addresses from
+  `utils/network.js` (virtual adapters left out, the default route's
+  first). The header's "Use on phone" button and `PhoneDialog` show it as a
+  QR code (`uqr`), asked afresh on every opening.
+  `e2e/tests/phone.spec.ts` fakes that block, since Docker never sends it.
+- **Closing the window** quits, unless phone access is on: then it hides to
+  the tray, whose Quit stops it.
+- **Tools.** The oneClick installer asks nothing; the app offers the missing
+  tools on its first start (winget in a visible console:
+  `installTools()` / `missingTools()` in `utils/tools.js`, asked for over
+  `process.parentPort`).
+- **No HTTP endpoint starts a program.** 1.0.x had `routes/native.js`
+  (`/native/update`, `/native/tools`) and `utils/update.js`; 2.0 removed
+  them. The update is electron-updater's.
+- **Notices and logs.** The app shows update and tools notices
+  (`Notices.tsx`); "Later" and "Skip" live in localStorage
+  (`lib/updateNotice.ts`) while the header's "Update available" stays. Logs
+  go to `%LOCALAPPDATA%\FileMinify\logs` (fileminify.log from the backend,
+  desktop.log from main), opened from the tray. The UI reaches all of this
+  through the bridge, which `e2e/tests/native.spec.ts` fakes.
+`desktop/build.sh` stages the backend (with its own production node_modules),
+the built app and Ghostscript, and electron-builder makes the per-user NSIS
+installer (`desktop/electron-builder.yml`, with `desktop/build/installer.nsh`;
+see "Desktop app"). The winget manifest pulls in
 FFmpeg, ImageMagick, LibreOffice and the VC++ runtime. Ghostscript is bundled
 because winget has none (its installer is interactive-only). Without any
 `FM_*` variable set, nothing about the Docker setup changes.
@@ -134,6 +131,179 @@ What nginx did and native mode now does itself:
 - **Upload timeout.** Node's `requestTimeout` is raised to the job timeout,
   because a phone's upload now streams straight into Node.
 - **`X-Frame-Options: DENY`** and nginx's CSP.
+
+### Desktop app (2.0, in progress: `desktop/`, replaced 1.0.x's `windows/`)
+
+Electron 44.4.5 (Node 24), electron-builder 26.16.1, electron-updater 6.8.9,
+pinned exactly. This is the contract the pieces are built against:
+
+- **Layout.**
+  - The asar holds only `desktop/main.cjs`, `preload.cjs`, `lib/*.cjs` and
+    `lib/assets/` (the tray icon, 16 px plus `@1.5x`/`@2x`, rendered from
+    `public/icons/icon-512.png`).
+  - Beside it, as plain `extraResources`: `resources\backend` (the backend
+    staged by `desktop/build.sh`, with its own `npm ci --omit=dev`, sharp
+    included), `resources\dist`, `resources\tools\gs` and `resources\magick`.
+  - Installed per user by a oneClick NSIS installer to
+    `%LOCALAPPDATA%\Programs\fileminify-app\FileMinify.exe`.
+  - `appId com.bardurnielsen.fileminify` never changes: the uninstall key and
+    winget's ProductCode derive from it.
+  - The data folder is `%LOCALAPPDATA%\FileMinify`, as in 1.0.x (settings.env,
+    logs, temp), plus `app\` for Electron's own.
+- **Server.** A `utilityProcess` runs `resources\backend\server.js`, with an
+  env built by main:
+  1. Inherited `FM_*`, `MAGICK_*`, `ELECTRON_RUN_AS_NODE` and `NODE_OPTIONS`
+     are dropped.
+  2. The 1.0.x launcher defaults apply (PORT 3051, FM_HOST 127.0.0.1,
+     FM_TRUST_PROXY 0, MAX_FILE_SIZE 500MB, PROCESS_TIMEOUT_MIN 30,
+     FM_DATA_DIR, FM_STATIC_DIR).
+  3. The bundled Ghostscript and `MAGICK_CONFIGURE_PATH` are set.
+  4. settings.env overrides all of that.
+  5. `FM_VERSION` comes from `app.getVersion()`.
+- **Main process** (`desktop/main.cjs`, `lib/`): `config` (data dir,
+  settings.env read and `saveHost` exactly as launcher.js did, the server's
+  env), `log` (`logs\desktop.log`, rotated at 5 MB, two kept; the server's
+  output goes there too), `server`, `window`, `tray`, `ipc`, `updater`.
+  - Start: single-instance lock (a second launch shows the window), server,
+    then the window. A port in use is a dialog naming `PORT=`, then quit. A
+    server that dies is restarted once; again within 10 minutes, the user
+    picks Restart or Quit.
+  - Close button: phone access off quits (asking first if busy); on, the
+    window hides to the tray, with a one-time balloon. Tray: Open, Phone
+    access, Open log folder, Quit. Quitting sends `shutdown` first, and an
+    update's `quitAndInstall` skips the question and the tray.
+  - Window: size and place in `app\window.json`, restored only if still on a
+    screen; no menu; new windows denied, only `https://github.com/bardurnielsen/file-minify/`
+    links open in the browser; navigation stays on the app's origin; every
+    permission but `clipboard-sanitized-write` denied. Downloads save
+    straight to Downloads (`name (1).ext` when taken); the page gets only an
+    opaque id, never a path.
+  - Markers in `app\`: `first-run-done` (the tools question was asked; not
+    asked with `FM_NO_WINDOW`), `tray-hint-shown`, and `disable-gpu`, written
+    when the GPU process fails to launch or crashes: the app relaunches
+    without GPU acceleration (unless busy; then from the next start).
+  - Updates: electron-updater, nothing automatic; checked when the page asks
+    and every 12 h (cached 12 h). Any check error means "no update".
+- **Messages over `process.parentPort`** (`backend/utils/desktop.js`, which
+  does nothing outside the app):
+  - Server to main: `{type:'listening',host,port}`, `{type:'listen-error',code}`,
+    and `{type:'busy',busy}` when processing requests in flight (`trackJobs`:
+    uploads, compressions, conversions, merges, from the window or a phone)
+    go from none to some and back.
+  - Main to server, also: `{type:'phone-network',id}` gets the QR address's
+    network (`{category,name,kind,index}` or null), and
+    `{type:'network-changed',id}` drops the 20 s network/firewall cache.
+  - Main to server: `{type:'install-tools',id}` gets
+    `{type:'install-tools',id,outcome,packages}`; `{type:'missing-tools',id}`
+    gets `{type:'missing-tools',id,missing}`; `{type:'shutdown'}` closes the
+    server and exits.
+  - The window loads `http://127.0.0.1:<port>/` only after `listening`.
+- **Bridge `window.fileminify`** (preload, `contextIsolation` and `sandbox`),
+  typed in `src/lib/native.ts`: `updateStatus()`, `startUpdate()`,
+  `onUpdateProgress(cb)`, `installTools()`, `setPhoneAccess(on)`,
+  `openLogFolder()`, `openNetworkSettings(kind)`, `makeNetworkPrivate()`,
+  `onDownloadSaved(cb)`, `showDownload(id)`,
+  `setBusy(busy)`.
+  - `ipcMain` handlers accept only the app window from the app origin.
+  - No HTTP endpoint starts a program: `/native/*` goes, and `/config` keeps
+    its read-only `phone`, `version`, `missingTools` and `installingTools`.
+  - What the UI expects of main. `startUpdate()` resolves once the download
+    is verified, just before `quitAndInstall`, and rejects if it fails;
+    `onUpdateProgress` gives 0-100 meanwhile. `installTools()` resolves with
+    `{ok:false, problem}` rather than rejecting; `'running'` is waited for
+    like a fresh start (polling `/config`'s `installingTools`).
+    `setPhoneAccess(on)` resolves once the server is back with the new
+    setting; main then reloads the window, with `?phone` when turned on.
+    `onDownloadSaved` fires for every download saved to Downloads, with an
+    `id` that `showDownload(id)` accepts. `setBusy` is sent on every change,
+    starting with `false`: true while any file uploads, waits in the queue or
+    processes, or a merge runs.
+  - Without the bridge (a browser tab on the same PC) the UI offers no update
+    or tools install and points to the app's window or its tray icon.
+  - `e2e/tests/desktop-fake.ts` fakes the bridge for the Docker stack;
+    `DESKTOP_BRIDGE_KEYS` there is what the real preload must expose.
+- **Priority.** The server runs below normal priority, and the tools it starts
+  inherit it: an encode gets the whole processor when the PC is otherwise
+  idle, but what the user is doing comes first.
+- **Public networks.** `/config`'s `phone` says `publicNetwork` and, if so,
+  `firewall` (`blocks`/`allows`/`unknown`, from FileMinify.exe's own inbound
+  rules for the Public profile), and `networkKind` (no name: the profile name can be a DNS domain, and the
+  SSID needs Location permission on Windows 11 24H2). The panel
+  warns only when the firewall doesn't allow it. `makeNetworkPrivate()` runs
+  `Set-NetConnectionProfile -InterfaceIndex <n> -NetworkCategory Private`
+  behind Windows' admin prompt (n from the backend, checked to be an
+  integer). `openNetworkSettings(kind)` opens only `ms-settings:network-wifi`,
+  `-ethernet` or `ms-settings:network`.
+- **Busy work and sleep.** "Busy" is the page's own work (`setBusy`) or the
+  server's `busy`. While busy, Windows is kept awake
+  (`powerSaveBlocker 'prevent-app-suspension'`, released 30 s after the
+  last job), and quitting, updating or switching phone access asks first.
+- **Start with Windows** (a tray checkbox): a login item named `FileMinify`
+  that runs `FileMinify.exe --hidden`, which starts in the tray only; the
+  tools question waits until the window first opens. It is read back by its
+  name (`launchItems`), and the uninstaller deletes the Run value.
+- **settings.env keys added:** `FM_UPDATE_PRERELEASE=1` (testers get betas),
+  `FM_DISABLE_GPU=1`, `FM_UPDATE_CHECK=0` (never look). For
+  CI only: `FM_UPDATE_FEED` (a generic feed; `http://127.0.0.1` or
+  `http://localhost` only, anything else is ignored) and `FM_NO_WINDOW=1`
+  (server and tray, no window). `FM_NO_WINDOW` and `FM_DISABLE_GPU` are
+  also read from the environment.
+- **Every release must stay updatable from 1.0.3.**
+  - It is the `releases/latest` (published, not a draft, not a prerelease).
+  - Its asset is named exactly `FileMinify-Setup-X.Y.Z.exe`, with a matching
+    `vX.Y.Z` tag, and GitHub's sha256 digest is present.
+  - It installs with no arguments and no elevation, stops the old app
+    itself, and starts the new one.
+  - The installer's `customInit` removes a 1.0.x install *without* running
+    Inno's uninstaller, which would delete settings.env.
+  - A prerelease is only ever `vX.Y.Z-beta.N` (the build and release jobs
+    refuse anything else). electron-updater reads the part after the `-` as
+    a channel: an install from an `-rc.N` would only look for more rc
+    releases, never the stable one, while `beta` (and `alpha`) take stable.
+  - A published release is never replaced: the release job fills in and
+    publishes a draft, and fails on a published one. Release a new version.
+- **Installer** (`desktop/build/installer.nsh`, electron-builder's NSIS
+  macros, and the PowerShell scripts beside it, unpacked to the installer's
+  temp folder and read in as a script block, so no execution policy applies;
+  paths reach them in `FMSETUP_*` environment variables, never quoted into a
+  command line).
+  - `customInit`, before anything is extracted, finds 1.0.x by its Inno
+    uninstall key (`{A714B514-…}_is1`) or its files. `stop-processes.ps1`
+    stops the old `node.exe` (by exact path), the bundled Ghostscript under
+    its `tools\gs\`, the FFmpeg, ImageMagick and LibreOffice processes it
+    started (down the parent chain; never its whole tree, since setup is its
+    child when 1.0.3's updater starts it) and its Edge window. Then it
+    deletes 1.0.x's files by name, its shortcuts, the Edge profile
+    (`FileMinify\window`) and, last, the key. settings.env, logs and temp
+    stay. Every step can run again: a file still locked keeps the key, and
+    the next install finishes the job. Half done (`node.exe` held), the
+    phone-access and log-folder shortcuts still go, the key gets
+    `SystemComponent=1` (out of Apps & Features) and Inno's `unins000.*` are
+    deleted, so nobody can run the uninstaller that would wipe 2.0's data.
+    It also moves its working directory out of the old folder, which 1.0.3's
+    updater starts setup in, notes whether a 1.0.x user had a desktop
+    shortcut, and whether a silent install (winget) is about to stop a
+    running FileMinify (2.x or 1.0.x). It must never ask anything (a
+    MessageBox needs `/SD`): winget and CI run it with `/S`, 1.0.3's updater
+    with no arguments.
+  - `customCheckAppRunning` replaces electron-builder's check (which broke on
+    a quote in the path): an update (`--updated`) first gets 8 s to quit by
+    itself, then everything running from the install folder is stopped,
+    with the tools it started (`stop-processes.ps1`; `taskkill` by name if
+    PowerShell can't run). `customUnInstallCheck` is electron-builder's own
+    with `/SD` on its MessageBox.
+  - `customInstall` grants "ALL APPLICATION PACKAGES" read access to the
+    install folder (the per-user GPU start-up failure); deletes the
+    updater's `current.blockmap` unless it is an update (installed any other
+    way it is stale, and the next differential download would fail and fetch
+    everything) and 1.0.3's leftover `%TEMP%\FileMinify-update-*` downloads
+    (not the one it runs from). After a 1.0.x install it removes the new
+    desktop shortcut if the user had none, and `retarget-shortcuts.ps1`
+    points shortcuts to the old `node.exe` (desktop, Start-menu folders,
+    taskbar pins) at the new exe, with the app's AppUserModelID. If a silent
+    install stopped FileMinify, it starts it again with `--hidden`.
+  - `customUnInstall` removes `%LOCALAPPDATA%\FileMinify` and the updater's
+    cache, except during an update (`--updated`).
 
 ## Invariants — these are fixed bugs, do not regress them
 
@@ -180,7 +350,7 @@ What nginx did and native mode now does itself:
     `os.devNull`, not `/dev/null`. `-x265-params` splits on `:`, which a
     Windows path contains, so x265's two-pass stats file is named relative
     to the temp dir that FFmpeg runs in.
-12. **Natively, nothing is in front of the backend**, so the launcher sets
+12. **Natively, nothing is in front of the backend**, so the desktop app sets
     `FM_TRUST_PROXY=0`. Trusting `X-Forwarded-For` there reopens invariant 6's
     rate-limiter bypass. Verified: with 0, rotating the header still counts
     down.
@@ -189,8 +359,29 @@ What nginx did and native mode now does itself:
     declared PNG that is really SVG was rendered, and SVG can read local files.
     In Docker only a missing SVG delegate stopped it; ImageMagick 7 on Windows
     renders SVG itself. Verified by giving a container `rsvg-convert`: the old
-    call made a PDF, the pinned one refuses. `windows/magick/policy.xml` is
+    call made a PDF, the pinned one refuses. `desktop/magick/policy.xml` is
     the second lock. Smoke: "svg disguised as png".
+
+
+14. **No HTTP endpoint starts a program.** 1.0.x's `/native/*` did, guarded to
+    the PC itself. In 2.0, updating and installing tools go through the
+    desktop bridge (`window.fileminify`), whose handlers accept only the app
+    window, from the app origin, while our own server listens.
+15. **`appId` and the 1.0.x migration are permanent.** The appId
+    `com.bardurnielsen.fileminify` is where the uninstall key, winget's
+    ProductCode and every update come from. `customInit`'s 1.0.x removal must
+    stay in every release, because a 1.0.3 that updates late still gets
+    whatever is newest.
+16. **Every release stays updatable from 1.0.3:**
+    - It is published as `releases/latest`, never as a draft.
+    - Its asset is named exactly `FileMinify-Setup-X.Y.Z.exe`, with a
+      matching `vX.Y.Z` tag and GitHub's sha256 digest.
+    - Prereleases are only `vX.Y.Z-beta.N`: an `rc` channel never gets the
+      stable release in electron-updater.
+    - A published release's installer is never replaced; release a new
+      version instead.
+
+    The release job checks all of this.
 
 ## Behaviour worth knowing
 
@@ -297,7 +488,8 @@ Two suites, both against a running stack and both in CI (jobs `backend` and
 - `e2e/run.sh` - the browser suite (Playwright, `e2e/tests/`): drop-and-process,
   held videos and their settings, labelled download names, merge, sliders and
   the format picker, untyped uploads, the drag overlay, the video queue, the
-  settings panel's exit. It runs in the Playwright image whose tag run.sh reads
+  settings panel's exit, and the desktop app's notices, phone switch and
+  download toast against a faked bridge. It runs in the Playwright image whose tag run.sh reads
   from `e2e/package.json` (pinned exactly, so a Dependabot bump moves both),
   and makes its test videos with the backend's ffmpeg (`e2e/make-media.sh`).
   Every test also fails on any browser console error. Each of its bug tests
@@ -310,12 +502,41 @@ Two suites, both against a running stack and both in CI (jobs `backend` and
   README can't carry CSS: the shadow lifts it off GitHub's white page, the
   hairline edges it on the dark one. Re-run it after a visible UI change; don't edit the PNGs.
 
-A separate workflow, `windows.yml` (not a required check), runs on a Windows
-runner when the backend, app or `windows/` change. It builds the installer,
-installs it silently, runs the smoke suite against the installed app at
-`:3051/api`, and uninstalls it. The installer is kept as a run artifact to try
-on a real PC. On a `v*` tag it is attached to the release, and the job prints
-the SHA-256 for the winget manifest. The native mode can be exercised on Linux
+A separate workflow, `windows.yml` (not a required check), runs on Windows
+runners when the backend, app or `desktop/` change:
+- `build`: `desktop/build.sh <version> --next <version+1>`, the installer plus
+  a second build one patch up (`build/desktop-next`) that serves as the
+  update feed. Both are kept as run artifacts; the first is what to try on a
+  real PC.
+- `installed`: installs it silently, starts it with stale `FM_VERSION` and
+  `MAGICK_CONFIGURE_PATH` (which it must ignore) and a DevTools port, runs
+  the smoke suite at `:3051/api`, checks `/native/*` is gone and the version
+  and ImageMagick policy, takes a screenshot, then runs the desktop suite
+  (`e2e/desktop/`, `e2e/desktop.config.ts`: Playwright over CDP, in file
+  order). That checks the bridge's keys against `DESKTOP_BRIDGE_KEYS`, a
+  download to Downloads, phone access on and off, a second start, the update
+  to desktop-next through the Update button (`FM_UPDATE_FEED` to a local
+  `python -m http.server`, which also serves the installed version's
+  blockmap, and must be asked for it), and that closing the window stops
+  everything. Then it uninstalls and checks nothing is left.
+- `migration`, three times: installs the real 1.0.3 (hash-checked), seeds
+  settings.env, logs, an Edge profile, a taskbar pin and a stale
+  `%TEMP%\FileMinify-update-*`, starts the old app and an Edge, then runs
+  the new installer silently (`/S`, no desktop icon), as 1.0.3's updater
+  does (a detached child of the old `node.exe`, no arguments, in the old
+  folder, with its stale environment), or silently with the old `node.exe`
+  held open (it must stop half way: key kept but hidden, `unins000.*`
+  gone), then again once let go. The old processes, folder, key and
+  shortcuts must be gone, the pin and any desktop icon pointing at the new
+  exe (and no desktop icon where 1.0.x had none), settings.env
+  byte-identical, and the new app running with phone access still on.
+- `release`, on a `v*` tag: checks latest.yml against the exe, then one
+  `gh release create` with the exe, its blockmap and latest.yml, never a
+  draft (a draft made by hand is filled in and published; a published
+  release fails the job); a `vX.Y.Z-beta.N` tag is a prerelease, and any
+  other tag with a `-` fails. It then checks `releases/latest`
+  still meets the 1.0.3 rules above, and prints the SHA-256 for the winget
+  manifest. The native mode can be exercised on Linux
 too: run the backend image with `FM_STATIC_DIR` pointing at a built `dist/`,
 then run smoke and `e2e/run.sh` against it.
 

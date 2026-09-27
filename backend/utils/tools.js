@@ -109,7 +109,7 @@ const PIECES = [
   { key: 'ghostscript', tools: ['gs'], winget: null },
 ];
 
-// The same two files setup checks for (HasVCRuntime in windows/fileminify.iss).
+// The VC++ runtime, by two of its files (the same two 1.0.x's setup checked).
 const vcRuntimeFound = () => ['vcruntime140_1.dll', 'msvcp140.dll'].every((dll) =>
   fs.existsSync(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', dll)));
 
@@ -138,10 +138,13 @@ let toolsInstall = null; // the running install, until its window closes
 const installingTools = () => toolsInstall !== null;
 
 // Install packages with winget in a console window of its own, so the user
-// sees it working and answers Windows' permission prompts. The ids come from
-// PIECES above, never from a request. The tools are found on their next
-// lookup, with no restart. Returns 'started', 'running' (one already is) or
-// 'no-winget'.
+// sees it working and answers Windows' permission prompts. The desktop app's
+// main process asks for it (utils/desktop.js); no HTTP request can. The ids
+// come from PIECES above, never from a message. The tools are found on their
+// next lookup, with no restart. Returns 'started', 'running' (one already is)
+// or 'no-winget'. Quitting the app leaves a running install alone: it is
+// winget's own window, and cutting it off mid-install could leave a tool
+// half there.
 //
 // The window comes from `start`. A detached child of Node gets no console of
 // its own (libuv: DETACHED_PROCESS) and NUL for its output, so cmd run

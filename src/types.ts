@@ -19,22 +19,28 @@ export type VideoCodec = 'h264' | 'h265';
 export type VideoResolution = '1440' | '1080' | '720' | '480';
 
 /**
- * The Windows build, on the PC itself: whether phones on the network may use
+ * The desktop app, on the PC itself: whether phones on the network may use
  * FileMinify, and the addresses they would open (best first).
  */
 export interface PhoneAccess {
   enabled: boolean;
   urls: string[];
+  /** Windows treats the network of the first address as Public. */
+  publicNetwork?: boolean;
+  /** Then: whether FileMinify's firewall rules block phones there ('unknown': couldn't read them). */
+  firewall?: 'blocks' | 'allows' | 'unknown';
+  /** Then: the kind of network, for the right Settings page and wording. */
+  networkKind?: 'wifi' | 'ethernet' | 'other';
 }
 
-/** The Windows build's own check for a newer release (GET /native/update). */
+/** The desktop app's own check for a newer release (desktop.updateStatus()). */
 export interface UpdateStatus {
   current: string | null;
   available: boolean;
   latest?: { version: string; notes: string };
 }
 
-/** A tool the Windows build could not find (GET /config, missingTools). */
+/** A tool the desktop app could not find (GET /config, missingTools). */
 export type MissingTool = 'ffmpeg' | 'imagemagick' | 'libreoffice' | 'ghostscript' | 'vcruntime';
 
 export type Route = 'compression' | 'conversion';

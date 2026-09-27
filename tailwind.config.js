@@ -40,5 +40,10 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // app:… applies inside the desktop app's own window only (main.tsx sets
+    // data-app there), where the first screen should fit without scrolling,
+    // as an application's does. The web page keeps its roomier layout.
+    ({ addVariant }) => addVariant('app', '[data-app="desktop"] &'),
+  ],
 };

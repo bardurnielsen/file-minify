@@ -451,12 +451,12 @@ const FileProcessor: React.FC = () => {
   const toolbarTier: Tier = hasFiles && allTiersEqual ? files[0].options.tier : defaultTier;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 app:space-y-5">
       <div className="text-center">
-        <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 sm:text-[2.5rem] sm:leading-[1.1]">
+        <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 sm:text-[2.5rem] sm:leading-[1.1] app:text-[2rem] app:leading-tight">
           Smaller files. Nothing to fiddle with.
         </h1>
-        <p className="mx-auto mt-3 max-w-lg text-[15px] leading-relaxed text-zinc-500 dark:text-zinc-400">
+        <p className="mx-auto mt-3 max-w-lg text-[15px] leading-relaxed text-zinc-500 dark:text-zinc-400 app:mt-2 app:[@media(max-height:700px)]:hidden">
           Compress images, video and PDFs, turn Office documents into PDFs, or merge several
           files into one PDF in the order you choose. Good defaults are chosen for you; every
           setting is still one click away.
@@ -638,7 +638,7 @@ const FileProcessor: React.FC = () => {
       />
 
       {!hasFiles && (
-        <p className="text-center text-xs text-zinc-400 dark:text-zinc-500">
+        <p className="text-center text-xs text-zinc-400 dark:text-zinc-500 app:hidden">
           Up to 10 files at a time · Files are deleted from the server within an hour
         </p>
       )}

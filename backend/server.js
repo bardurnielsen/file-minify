@@ -22,12 +22,12 @@ const { errorHandler } = require('./middleware/errorHandler');
 const logger = require('./utils/logger');
 const { TEMP_DIR } = require('./utils/paths');
 const { toolReport } = require('./utils/tools');
-const { lanAddresses, fromThisMachine } = require('./utils/network');
-const nativeRoutes = require('./routes/native');
+const { lanAddresses, fromThisMachine, networkOf, firewallOnPublic } = require('./utils/network');
+const desktop = require('./utils/desktop');
 const { missingTools, installingTools } = require('./utils/tools');
 
 const PORT = process.env.PORT || 4000;
-// FM_HOST narrows where it listens; the Windows launcher uses 127.0.0.1 unless
+// FM_HOST narrows where it listens; the desktop app uses 127.0.0.1 unless
 // phones on the LAN were allowed in. Unset means every interface, as in Docker.
 const HOST = process.env.FM_HOST || undefined;
 
@@ -50,7 +50,9 @@ app.use(helmet(STATIC_DIR ? {
       defaultSrc: ["'self'"],
       imgSrc: ["'self'", 'data:', 'blob:'],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
+      // No inline script: the desktop app's window has the bridge
+      // (window.fileminify), and the app has no inline script to allow.
+      scriptSrc: ["'self'"],
       connectSrc: ["'self'"],
     },
   },
@@ -116,7 +118,7 @@ app.use((req, res, next) => {
 // nginx is the only thing in front of this, and it sets X-Forwarded-For.
 // Without this the limiter sees nginx's container address for every visitor and
 // buckets them all together, so one busy client locks out everyone. Natively
-// nothing is in front, so the launcher sets FM_TRUST_PROXY=0: trusting the
+// nothing is in front, so the desktop app sets FM_TRUST_PROXY=0: trusting the
 // header there would let a client pick its own address (invariant 6).
 const trustProxy = process.env.FM_TRUST_PROXY;
 app.set('trust proxy', trustProxy === undefined ? 1
@@ -175,18 +177,33 @@ api.get('/health', (req, res) => {
 // Natively, the app on the PC itself also gets `phone`: whether phones on the
 // network may connect (FM_HOST), and the addresses they would use, for its
 // "Use on your phone" panel. Asked fresh each time, since a router can hand
-// the PC a new address. And `version` (for the footer and the update check)
-// and `missingTools`, for the warning that says what won't work. Phones and
-// other machines get none of it.
+// the PC a new address. And `version` (for the footer), `missingTools` (for
+// the warning that says what won't work) and `installingTools` (while winget's
+// window is open). Phones and other machines get none of it. All of it is
+// read-only: whatever starts a program (an update, installing the tools) is
+// asked of the desktop app's main process, never of an HTTP endpoint.
 api.get('/config', async (req, res) => {
   const phoneAccess = HOST !== '127.0.0.1';
+  const pcOnly = STATIC_DIR && fromThisMachine(req);
+  const addresses = pcOnly && phoneAccess ? await lanAddresses() : [];
+  const network = await networkOf(addresses[0]);
+  const publicNetwork = network?.category === 'Public';
   res.status(200).json({
     maxFileBytes: uploadRoutes.MAX_FILE_BYTES,
     maxFiles: uploadRoutes.MAX_FILES,
-    ...(STATIC_DIR && fromThisMachine(req) && {
+    ...(pcOnly && {
       phone: {
         enabled: phoneAccess,
-        urls: phoneAccess ? (await lanAddresses()).map((a) => `http://${a}:${PORT}`) : [],
+        urls: addresses.map((a) => `http://${a}:${PORT}`),
+        // The address the QR code shows is on a network Windows calls Public,
+        // and whether FileMinify's firewall rules let phones in there.
+        publicNetwork,
+        // What the warning needs to open the right Settings page (Wi-Fi or
+        // Ethernet).
+        ...(publicNetwork && {
+          firewall: await firewallOnPublic(),
+          networkKind: network.kind,
+        }),
       },
       version: process.env.FM_VERSION || null,
       missingTools: missingTools().map((m) => m.key),
@@ -195,11 +212,10 @@ api.get('/config', async (req, res) => {
   });
 });
 
+// In the desktop app, work in progress is counted (utils/desktop.js):
+// Windows is kept awake while there is any. Elsewhere it only calls next().
+app.use(desktop.trackJobs);
 app.use(api);
-
-// The update check and installer, and installing missing tools: the Windows
-// build only, and only for the PC itself (routes/native.js).
-if (STATIC_DIR) api.use('/native', nativeRoutes);
 
 if (STATIC_DIR) {
   app.use('/api', api);
@@ -217,12 +233,34 @@ if (STATIC_DIR) {
 app.use(errorHandler);
 
 // Start server
-const server = app.listen(PORT, HOST, () => {
+// Express 5 calls this on a failed listen too, with the error, which the
+// 'error' handler below deals with. Carrying on here read the address of a
+// server that had none and crashed before the app was told why.
+const server = app.listen(PORT, HOST, (err) => {
+  if (err) return;
   logger.info(`Server running on ${HOST || 'all interfaces'}, port ${PORT}`);
+  // The desktop app opens its window only once its own server answers.
+  desktop.send({ type: 'listening', host: HOST || '0.0.0.0', port: server.address().port });
   for (const [name, found] of Object.entries(toolReport())) {
     if (found) logger.info(`Tool ${name}: ${found}`);
     else logger.warn(`Tool ${name}: NOT FOUND - features using it will fail`);
   }
+});
+
+// The desktop app's requests (utils/desktop.js); nothing outside it.
+desktop.attach(server);
+
+// In the desktop app a port already in use (EADDRINUSE) is reported to the
+// app, which says so, rather than crashing. Elsewhere it throws. (Before
+// this, Express 5 handed the error to the listen callback, which logged
+// "Server running" and carried on listening on nothing.) An error after a
+// good listen is a crash like any other, which the app restarts.
+server.on('error', (err) => {
+  if (!desktop.inDesktop || server.listening) throw err;
+  logger.error(`Server could not start: ${err.message}`);
+  desktop.send({ type: 'listen-error', code: err.code || 'UNKNOWN' });
+  // A moment for the message to reach the app before this process goes.
+  setTimeout(() => process.exit(1), 200);
 });
 
 // In Docker nginx takes in the whole upload before passing it on, quickly.

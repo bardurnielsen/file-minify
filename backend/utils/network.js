@@ -1,5 +1,7 @@
 const os = require('os');
+const path = require('path');
 const dgram = require('dgram');
+const { execFile } = require('child_process');
 
 // Addresses a phone on the same network can reach this PC by, for the app's
 // "Use on your phone" panel (native mode only). A PC often has several:
@@ -48,4 +50,112 @@ const lanAddresses = async () => {
 const fromThisMachine = (req) =>
   ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
 
-module.exports = { lanAddresses, fromThisMachine };
+// Whether Windows treats the network an address is on as Public. Its
+// firewall then blocks phones even with FileMinify allowed on Private
+// networks - and Windows 11 often files a new home Wi-Fi as Public. Asked of
+// Windows itself (Get-NetConnectionProfile), matched by the adapter's name,
+// remembered for 20 s. False where it can't tell, and off Windows.
+const PROFILE_TTL_MS = 20_000;
+let profiles = null; // { at, networks: Map(alias -> { category, kind, index }) }
+
+// One line per network: adapter name, category, the network's own name (what
+// Windows Settings lists, e.g. the Wi-Fi's), and the adapter's physical media
+// ("Native 802.11" is Wi-Fi, "802.3" a cable: the same in every language,
+// unlike the adapter's name), tab-separated.
+// The network's category, its adapter's physical media ("Native 802.11" is
+// Wi-Fi, "802.3" a cable: the same in every language, unlike the adapter's
+// name) and interface number. No name: the profile's name can be the
+// network's DNS domain rather than what Windows Settings shows, and the Wi-Fi
+// SSID needs Location permission on Windows 11 24H2, so the panel says "the
+// network marked Connected" instead.
+const PROFILES = [
+  'Get-NetConnectionProfile | ForEach-Object {',
+  '  $media = (Get-NetAdapter -InterfaceIndex $_.InterfaceIndex -ErrorAction SilentlyContinue).PhysicalMediaType',
+  '  "$($_.InterfaceAlias)`t$($_.NetworkCategory)`t$media`t$($_.InterfaceIndex)"',
+  '}',
+].join('\n');
+
+const kindOf = (media) => (/802\.11/.test(media) ? 'wifi' : /802\.3/.test(media) ? 'ethernet' : 'other');
+
+const readProfiles = () => new Promise((resolve) => {
+  const shell = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  execFile(shell, ['-NoProfile', '-NonInteractive', '-Command', PROFILES],
+    { windowsHide: true, timeout: 5000 }, (err, stdout) => {
+      const networks = new Map();
+      if (!err) {
+        for (const line of String(stdout).split(/\r?\n/)) {
+          const [alias, category, media, index] = line.split('\t').map((part) => (part ?? '').trim());
+          if (alias && category) {
+            networks.set(alias, {
+              category,
+              kind: kindOf(media || ''),
+              index: /^\d+$/.test(index || '') ? Number(index) : null,
+            });
+          }
+        }
+      }
+      resolve(networks);
+    });
+});
+
+// { category, kind, index } of the network an address is on, or null.
+const networkOf = async (address) => {
+  if (process.platform !== 'win32' || !address) return null;
+  const alias = Object.entries(os.networkInterfaces())
+    .find(([, list]) => (list || []).some((a) => a.address === address))?.[0];
+  if (!alias) return null;
+  if (!profiles || Date.now() - profiles.at > PROFILE_TTL_MS) {
+    profiles = { at: Date.now(), networks: await readProfiles() };
+  }
+  return profiles.networks.get(alias) ?? null;
+};
+
+// A Public network blocks phones only if the firewall does: allowing
+// FileMinify when Windows first asks creates an Allow rule for the networks
+// ticked there (Private by default) and a Block rule for the rest, and
+// someone may have ticked Public too, or turned the firewall off. So look at
+// FileMinify's own inbound rules for the Public profile: 'blocks', 'allows',
+// or 'unknown' if they can't be read. process.execPath is FileMinify.exe,
+// the program the rules name. Remembered for 20 s.
+let firewall = null; // { at, verdict }
+
+const FIREWALL_CHECK = [
+  "$p = Get-NetFirewallProfile -Profile Public -ErrorAction Stop",
+  "if (-not $p.Enabled) { 'allows'; exit }",
+  "$r = @(Get-NetFirewallApplicationFilter -Program $env:FM_EXE -ErrorAction SilentlyContinue |",
+  "  Get-NetFirewallRule -ErrorAction SilentlyContinue |",
+  "  Where-Object { $_.Enabled -eq 'True' -and $_.Direction -eq 'Inbound' -and ($_.Profile -match 'Public|Any') })",
+  "if ($r | Where-Object { $_.Action -eq 'Block' }) { 'blocks' }",
+  "elseif ($r | Where-Object { $_.Action -eq 'Allow' }) { 'allows' }",
+  "else { 'blocks' }", // no rule at all: inbound is blocked by default
+].join('\n');
+
+const readFirewall = () => new Promise((resolve) => {
+  const shell = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  execFile(shell, ['-NoProfile', '-NonInteractive', '-Command', FIREWALL_CHECK],
+    { windowsHide: true, timeout: 8000, env: { ...process.env, FM_EXE: process.execPath } },
+    (err, stdout) => {
+      const verdict = String(stdout).trim().split(/\r?\n/).pop();
+      resolve(!err && (verdict === 'blocks' || verdict === 'allows') ? verdict : 'unknown');
+    });
+});
+
+const firewallOnPublic = async () => {
+  if (process.platform !== 'win32') return 'unknown';
+  if (!firewall || Date.now() - firewall.at > PROFILE_TTL_MS) {
+    firewall = { at: Date.now(), verdict: await readFirewall() };
+  }
+  return firewall.verdict;
+};
+
+// The network the phone address (the QR code's) is on, for the app's "make
+// it Private" (desktop.js): { category, kind, index } or null.
+const phoneNetwork = async () => networkOf((await lanAddresses())[0]);
+
+// Windows' settings changed (the app made a network Private): ask afresh.
+const forgetNetworkState = () => {
+  profiles = null;
+  firewall = null;
+};
+
+module.exports = { lanAddresses, fromThisMachine, networkOf, firewallOnPublic, phoneNetwork, forgetNetworkState };

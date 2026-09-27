@@ -37,7 +37,7 @@ export const DropHero: React.FC<HeroProps> = ({
       tabIndex={0}
       aria-label="Drop files here or choose files"
       className={cn(
-        'group relative flex cursor-pointer flex-col items-center justify-center rounded-[20px] border-2 border-dashed px-6 py-16 text-center transition-colors focus-ring sm:py-20',
+        'group relative flex cursor-pointer flex-col items-center justify-center rounded-[20px] border-2 border-dashed px-6 py-16 text-center transition-colors focus-ring sm:py-20 app:py-8 app:[@media(max-height:700px)]:py-5',
         isDragReject
           ? 'border-rose-400 bg-rose-50/60 dark:border-rose-500/70 dark:bg-rose-950/20'
           : isDragActive
@@ -49,7 +49,7 @@ export const DropHero: React.FC<HeroProps> = ({
         animate={isDragActive ? { y: 6, scale: 1.05 } : { y: 0, scale: 1 }}
         transition={{ type: 'spring', stiffness: 400, damping: 30 }}
         className={cn(
-          'mb-6 flex h-16 w-16 items-center justify-center rounded-2xl shadow-sm transition-colors',
+          'mb-6 flex h-16 w-16 items-center justify-center rounded-2xl shadow-sm transition-colors app:mb-4',
           isDragReject
             ? 'bg-rose-500 text-white'
             : isDragActive
