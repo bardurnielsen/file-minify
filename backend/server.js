@@ -198,11 +198,10 @@ api.get('/config', async (req, res) => {
         // The address the QR code shows is on a network Windows calls Public,
         // and whether FileMinify's firewall rules let phones in there.
         publicNetwork,
-        // What the warning needs to name the network and open the right
-        // Settings page (Wi-Fi or Ethernet).
+        // What the warning needs to open the right Settings page (Wi-Fi or
+        // Ethernet).
         ...(publicNetwork && {
           firewall: await firewallOnPublic(),
-          networkName: network.name,
           networkKind: network.kind,
         }),
       },

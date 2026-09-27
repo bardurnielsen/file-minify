@@ -227,7 +227,8 @@ pinned exactly. This is the contract the pieces are built against:
   idle, but what the user is doing comes first.
 - **Public networks.** `/config`'s `phone` says `publicNetwork` and, if so,
   `firewall` (`blocks`/`allows`/`unknown`, from FileMinify.exe's own inbound
-  rules for the Public profile), `networkName` and `networkKind`. The panel
+  rules for the Public profile), and `networkKind` (no name: the profile name can be a DNS domain, and the
+  SSID needs Location permission on Windows 11 24H2). The panel
   warns only when the firewall doesn't allow it. `makeNetworkPrivate()` runs
   `Set-NetConnectionProfile -InterfaceIndex <n> -NetworkCategory Private`
   behind Windows' admin prompt (n from the backend, checked to be an

@@ -56,23 +56,22 @@ const fromThisMachine = (req) =>
 // Windows itself (Get-NetConnectionProfile), matched by the adapter's name,
 // remembered for 20 s. False where it can't tell, and off Windows.
 const PROFILE_TTL_MS = 20_000;
-let profiles = null; // { at, networks: Map(alias -> { category, name, kind, index }) }
+let profiles = null; // { at, networks: Map(alias -> { category, kind, index }) }
 
 // One line per network: adapter name, category, the network's own name (what
 // Windows Settings lists, e.g. the Wi-Fi's), and the adapter's physical media
 // ("Native 802.11" is Wi-Fi, "802.3" a cable: the same in every language,
 // unlike the adapter's name), tab-separated.
-// For Wi-Fi the name is the SSID, as Windows Settings lists it ("<SSID>
-// properties"): the connection profile's own name can be something else, such
-// as the network's DNS domain ("topaz.local" on the laptop that showed it).
-// netsh's "SSID" label is the same in every language; ^\s*SSID skips BSSID.
+// The network's category, its adapter's physical media ("Native 802.11" is
+// Wi-Fi, "802.3" a cable: the same in every language, unlike the adapter's
+// name) and interface number. No name: the profile's name can be the
+// network's DNS domain rather than what Windows Settings shows, and the Wi-Fi
+// SSID needs Location permission on Windows 11 24H2, so the panel says "the
+// network marked Connected" instead.
 const PROFILES = [
-  "$ssid = @(netsh wlan show interfaces 2>$null) | Where-Object { $_ -match '^\\s*SSID\\s*:' } |",
-  "  ForEach-Object { ($_ -split ':', 2)[1].Trim() } | Select-Object -First 1",
   'Get-NetConnectionProfile | ForEach-Object {',
   '  $media = (Get-NetAdapter -InterfaceIndex $_.InterfaceIndex -ErrorAction SilentlyContinue).PhysicalMediaType',
-  "  $name = if ($media -match '802\\.11' -and $ssid) { $ssid } else { $_.Name }",
-  '  "$($_.InterfaceAlias)`t$($_.NetworkCategory)`t$name`t$media`t$($_.InterfaceIndex)"',
+  '  "$($_.InterfaceAlias)`t$($_.NetworkCategory)`t$media`t$($_.InterfaceIndex)"',
   '}',
 ].join('\n');
 
@@ -85,11 +84,10 @@ const readProfiles = () => new Promise((resolve) => {
       const networks = new Map();
       if (!err) {
         for (const line of String(stdout).split(/\r?\n/)) {
-          const [alias, category, name, media, index] = line.split('\t').map((part) => (part ?? '').trim());
+          const [alias, category, media, index] = line.split('\t').map((part) => (part ?? '').trim());
           if (alias && category) {
             networks.set(alias, {
               category,
-              name: name || null,
               kind: kindOf(media || ''),
               index: /^\d+$/.test(index || '') ? Number(index) : null,
             });
@@ -100,7 +98,7 @@ const readProfiles = () => new Promise((resolve) => {
     });
 });
 
-// { category, name, kind } of the network an address is on, or null.
+// { category, kind, index } of the network an address is on, or null.
 const networkOf = async (address) => {
   if (process.platform !== 'win32' || !address) return null;
   const alias = Object.entries(os.networkInterfaces())
@@ -151,7 +149,7 @@ const firewallOnPublic = async () => {
 };
 
 // The network the phone address (the QR code's) is on, for the app's "make
-// it Private" (desktop.js): { category, name, kind, index } or null.
+// it Private" (desktop.js): { category, kind, index } or null.
 const phoneNetwork = async () => networkOf((await lanAddresses())[0]);
 
 // Windows' settings changed (the app made a network Private): ask afresh.

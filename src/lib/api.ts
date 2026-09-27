@@ -152,8 +152,6 @@ const parsePhone = (raw: unknown): PhoneAccess | undefined => {
     urls: phone.urls.filter((u): u is string => typeof u === 'string' && u.startsWith('http://')),
     publicNetwork: phone.publicNetwork === true,
     firewall: phone.firewall === 'blocks' || phone.firewall === 'allows' ? phone.firewall : 'unknown',
-    networkName: typeof phone.networkName === 'string' && phone.networkName.trim()
-      ? phone.networkName.trim().slice(0, 100) : undefined,
     networkKind: phone.networkKind === 'wifi' || phone.networkKind === 'ethernet' ? phone.networkKind : 'other',
   };
 };

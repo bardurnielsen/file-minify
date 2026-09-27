@@ -112,6 +112,7 @@ const PhoneDialog: React.FC<PhoneDialogProps> = ({ open, onOpenChange }) => {
   }, [open, onOpenChange]);
 
   const [main, ...others] = phone?.urls ?? [];
+  const thisNetwork = phone?.networkKind === 'wifi' ? 'this Wi-Fi' : 'this network';
   const turnOff = desktop && (
     <div className="w-full space-y-2 text-center text-xs">
       <button
@@ -202,8 +203,8 @@ const PhoneDialog: React.FC<PhoneDialogProps> = ({ open, onOpenChange }) => {
                     {desktop ? (
                       <>
                         <p className="mt-1">
-                          FileMinify can make {phone.networkName ? <strong>{phone.networkName}</strong> : 'this network'}{' '}
-                          Private for you. Only do that on a network you trust, such as your home Wi-Fi.
+                          FileMinify can make {thisNetwork} Private for you. Only do that on a network you trust,
+                          such as your home Wi-Fi.
                         </p>
                         <p className="mt-1 text-xs">
                           Windows then asks whether <strong>Windows PowerShell</strong> may make changes: that’s
@@ -218,7 +219,7 @@ const PhoneDialog: React.FC<PhoneDialogProps> = ({ open, onOpenChange }) => {
                           >
                             {privateState === 'working'
                               ? 'Waiting for Windows’ permission…'
-                              : `Make ${phone.networkName ?? 'this network'} Private`}
+                              : `Make ${thisNetwork} Private`}
                           </button>
                           <button
                             type="button"
@@ -233,18 +234,16 @@ const PhoneDialog: React.FC<PhoneDialogProps> = ({ open, onOpenChange }) => {
                         )}
                         {privateState === 'failed' && (
                           <p className="mt-2">
-                            That didn’t work. In the settings, open{' '}
-                            <strong>{phone.networkName ? `${phone.networkName} properties` : 'this network’s properties'}</strong>{' '}
+                            That didn’t work. In the settings, open the network marked <strong>Connected</strong>{' '}
                             and set <strong>Network profile type</strong> to <strong>Private</strong>.
                           </p>
                         )}
                       </>
                     ) : (
                       <p className="mt-1">
-                        In Windows Settings, open{' '}
-                        <strong>{phone.networkName ? `${phone.networkName} properties` : 'this network’s properties'}</strong>{' '}
-                        and set <strong>Network profile type</strong> to <strong>Private</strong>. Only do that on a
-                        network you trust, such as your home Wi-Fi.
+                        In Windows <strong>Settings → Network &amp; internet</strong>, open the network marked{' '}
+                        <strong>Connected</strong> and set <strong>Network profile type</strong> to{' '}
+                        <strong>Private</strong>. Only do that on a network you trust, such as your home Wi-Fi.
                       </p>
                     )}
                   </div>
