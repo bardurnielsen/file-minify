@@ -62,10 +62,17 @@ let profiles = null; // { at, networks: Map(alias -> { category, name, kind, ind
 // Windows Settings lists, e.g. the Wi-Fi's), and the adapter's physical media
 // ("Native 802.11" is Wi-Fi, "802.3" a cable: the same in every language,
 // unlike the adapter's name), tab-separated.
+// For Wi-Fi the name is the SSID, as Windows Settings lists it ("<SSID>
+// properties"): the connection profile's own name can be something else, such
+// as the network's DNS domain ("topaz.local" on the laptop that showed it).
+// netsh's "SSID" label is the same in every language; ^\s*SSID skips BSSID.
 const PROFILES = [
+  "$ssid = @(netsh wlan show interfaces 2>$null) | Where-Object { $_ -match '^\\s*SSID\\s*:' } |",
+  "  ForEach-Object { ($_ -split ':', 2)[1].Trim() } | Select-Object -First 1",
   'Get-NetConnectionProfile | ForEach-Object {',
   '  $media = (Get-NetAdapter -InterfaceIndex $_.InterfaceIndex -ErrorAction SilentlyContinue).PhysicalMediaType',
-  '  "$($_.InterfaceAlias)`t$($_.NetworkCategory)`t$($_.Name)`t$media`t$($_.InterfaceIndex)"',
+  "  $name = if ($media -match '802\\.11' -and $ssid) { $ssid } else { $_.Name }",
+  '  "$($_.InterfaceAlias)`t$($_.NetworkCategory)`t$name`t$media`t$($_.InterfaceIndex)"',
   '}',
 ].join('\n');
 

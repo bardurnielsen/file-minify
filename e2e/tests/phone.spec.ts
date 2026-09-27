@@ -175,6 +175,8 @@ test('in the app, the Public-network warning makes the network Private in one cl
   await fakeDesktop(page);
   await open(page);
   await page.getByRole('button', { name: 'Use on phone' }).click();
+  // Windows' prompt names PowerShell, not FileMinify: the panel says so first.
+  await expect(panel(page).getByRole('alert')).toContainText('Windows PowerShell may make changes');
   await panel(page).getByRole('button', { name: 'Make Home Wi-Fi Private' }).click();
   expect(await callsTo(page, 'makeNetworkPrivate')).toHaveLength(1);
   await expect(panel(page).getByRole('alert')).toHaveCount(0);

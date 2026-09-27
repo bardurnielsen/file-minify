@@ -203,8 +203,11 @@ const PhoneDialog: React.FC<PhoneDialogProps> = ({ open, onOpenChange }) => {
                       <>
                         <p className="mt-1">
                           FileMinify can make {phone.networkName ? <strong>{phone.networkName}</strong> : 'this network'}{' '}
-                          Private for you; Windows asks for permission first. Only do that on a network you trust,
-                          such as your home Wi-Fi.
+                          Private for you. Only do that on a network you trust, such as your home Wi-Fi.
+                        </p>
+                        <p className="mt-1 text-xs">
+                          Windows then asks whether <strong>Windows PowerShell</strong> may make changes: that’s
+                          FileMinify asking. Answer Yes.
                         </p>
                         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
                           <button
