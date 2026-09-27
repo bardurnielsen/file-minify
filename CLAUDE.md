@@ -132,7 +132,7 @@ What nginx did and native mode now does itself:
   because a phone's upload now streams straight into Node.
 - **`X-Frame-Options: DENY`** and nginx's CSP.
 
-### Desktop app (2.0, in progress: `desktop/`, replaced 1.0.x's `windows/`)
+### Desktop app (2.0, released 2026-09-27 as v2.0.0: `desktop/`, replaced 1.0.x's `windows/`)
 
 Electron 44.4.5 (Node 24), electron-builder 26.16.1, electron-updater 6.8.9,
 pinned exactly. This is the contract the pieces are built against:
