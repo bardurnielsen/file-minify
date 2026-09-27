@@ -7,6 +7,8 @@ type Phone = {
   urls: string[];
   publicNetwork?: boolean;
   firewall?: 'blocks' | 'allows' | 'unknown';
+  networkName?: string;
+  networkKind?: 'wifi' | 'ethernet' | 'other';
 };
 
 // Only the desktop app's server tells the app about phone access (GET
@@ -120,13 +122,17 @@ test('on a network Windows calls Public, the panel says why phones can’t conne
 });
 
 test('in the app, the Public-network warning opens Windows’ network settings, and goes once it is Private', async ({ page }) => {
-  let phone: Phone = { ...ON, publicNetwork: true, firewall: 'blocks' };
+  let phone: Phone = { ...ON, publicNetwork: true, firewall: 'blocks', networkName: 'Home Wi-Fi', networkKind: 'wifi' };
   await withPhone(page, () => phone);
   await fakeDesktop(page);
   await open(page);
   await page.getByRole('button', { name: 'Use on phone' }).click();
-  await panel(page).getByRole('button', { name: 'Open network settings' }).click();
-  expect(await callsTo(page, 'openNetworkSettings')).toHaveLength(1);
+  // It names the network the way Windows Settings lists it, and opens the Wi-Fi page.
+  await expect(panel(page).getByRole('alert')).toContainText('make Home Wi-Fi Private');
+  await panel(page).getByRole('button', { name: 'Change it in Wi-Fi settings instead' }).click();
+  const calls = await callsTo(page, 'openNetworkSettings');
+  expect(calls).toHaveLength(1);
+  expect(calls[0]).toEqual(['wifi']);
   // The user makes it Private in Windows and comes back to FileMinify.
   phone = { ...ON, publicNetwork: false };
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
@@ -156,4 +162,31 @@ test('when the firewall rules can’t be read, the Public warning only says what
   const warning = panel(page).getByRole('alert');
   await expect(warning).toContainText('If phones can’t connect, that’s why');
   await expect(warning).not.toContainText('can’t connect yet');
+});
+
+test('in the app, the Public-network warning makes the network Private in one click', async ({ page }) => {
+  let phone: Phone = { ...ON, publicNetwork: true, firewall: 'blocks', networkName: 'Home Wi-Fi', networkKind: 'wifi' };
+  await withPhone(page, () => phone);
+  // Windows' permission granted: the network is Private from then on.
+  await page.exposeFunction('__fmMakePrivate', async () => {
+    phone = { ...ON, publicNetwork: false };
+    return { ok: true };
+  });
+  await fakeDesktop(page);
+  await open(page);
+  await page.getByRole('button', { name: 'Use on phone' }).click();
+  await panel(page).getByRole('button', { name: 'Make Home Wi-Fi Private' }).click();
+  expect(await callsTo(page, 'makeNetworkPrivate')).toHaveLength(1);
+  await expect(panel(page).getByRole('alert')).toHaveCount(0);
+  await expect(panel(page).getByRole('img', { name: /^QR code for/ })).toBeVisible();
+});
+
+test('declining Windows’ permission leaves the warning, and says nothing changed', async ({ page }) => {
+  await withPhone(page, { ...ON, publicNetwork: true, firewall: 'blocks', networkName: 'Home Wi-Fi', networkKind: 'wifi' });
+  await page.exposeFunction('__fmMakePrivate', async () => ({ ok: false, problem: 'declined' }));
+  await fakeDesktop(page);
+  await open(page);
+  await page.getByRole('button', { name: 'Use on phone' }).click();
+  await panel(page).getByRole('button', { name: 'Make Home Wi-Fi Private' }).click();
+  await expect(panel(page).getByRole('alert')).toContainText('permission was declined, so nothing changed');
 });

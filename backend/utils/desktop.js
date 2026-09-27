@@ -1,6 +1,7 @@
 const logger = require('./logger');
 const { killAll } = require('./run');
 const { missingTools, installTools } = require('./tools');
+const { phoneNetwork, forgetNetworkState } = require('./network');
 
 // When the server runs inside the desktop app (an Electron utilityProcess,
 // desktop/lib/server.cjs), it talks to the main process over
@@ -54,6 +55,17 @@ const handle = (message, server) => {
     }
     case 'missing-tools':
       send({ type: 'missing-tools', id: message.id, missing: missingTools().map((m) => m.key) });
+      break;
+    case 'phone-network':
+      // Answered asynchronously: Windows is asked about its networks.
+      phoneNetwork().then(
+        (network) => send({ type: 'phone-network', id: message.id, network }),
+        (err) => send({ type: 'phone-network', id: message.id, error: err.message })
+      );
+      break;
+    case 'network-changed':
+      forgetNetworkState();
+      send({ type: 'network-changed', id: message.id });
       break;
     case 'shutdown':
       shutdown(server);

@@ -29,6 +29,9 @@ export interface PhoneAccess {
   publicNetwork?: boolean;
   /** Then: whether FileMinify's firewall rules block phones there ('unknown': couldn't read them). */
   firewall?: 'blocks' | 'allows' | 'unknown';
+  /** Then: the network's name as Windows Settings lists it, and its kind. */
+  networkName?: string;
+  networkKind?: 'wifi' | 'ethernet' | 'other';
 }
 
 /** The desktop app's own check for a newer release (desktop.updateStatus()). */

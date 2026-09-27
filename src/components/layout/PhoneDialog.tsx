@@ -53,6 +53,18 @@ const strong = 'text-zinc-900 dark:text-zinc-100';
 const PhoneDialog: React.FC<PhoneDialogProps> = ({ open, onOpenChange }) => {
   const phone = useFiles((s) => s.phone);
   const [switching, setSwitching] = useState(false);
+  // Making the network Private (the Public-network warning's button).
+  const [privateState, setPrivateState] = useState<'idle' | 'working' | 'declined' | 'failed'>('idle');
+  const makePrivate = () => {
+    if (!desktop) return;
+    setPrivateState('working');
+    void desktop.makeNetworkPrivate().then(async (result) => {
+      setPrivateState(result.ok ? 'idle' : result.problem);
+      // Read afresh: when it worked, the warning goes.
+      const config = await fetchConfig();
+      if (config) useFiles.getState().setPhone(config.phone ?? null);
+    });
+  };
   const [switchFailed, setSwitchFailed] = useState(false);
 
   const setAccess = (on: boolean) => {
@@ -187,19 +199,50 @@ const PhoneDialog: React.FC<PhoneDialogProps> = ({ open, onOpenChange }) => {
                         ? 'Phones can’t connect yet: Windows treats this Wi-Fi as Public.'
                         : 'This Wi-Fi is set to Public in Windows. If phones can’t connect, that’s why.'}
                     </p>
-                    <p className="mt-1">
-                      In Windows <strong>Settings → Network &amp; internet → Wi-Fi</strong>, open this network and set{' '}
-                      <strong>Network profile type</strong> to <strong>Private</strong>. Only do that on a network you
-                      trust, such as your home Wi-Fi.
-                    </p>
-                    {desktop && (
-                      <button
-                        type="button"
-                        onClick={() => void desktop?.openNetworkSettings()}
-                        className="mt-2 inline-flex h-8 items-center rounded-lg bg-amber-900 px-3 text-[13px] font-medium text-amber-50 transition-colors hover:bg-amber-950 focus-ring dark:bg-amber-200 dark:text-amber-950 dark:hover:bg-amber-100"
-                      >
-                        Open network settings
-                      </button>
+                    {desktop ? (
+                      <>
+                        <p className="mt-1">
+                          FileMinify can make {phone.networkName ? <strong>{phone.networkName}</strong> : 'this network'}{' '}
+                          Private for you; Windows asks for permission first. Only do that on a network you trust,
+                          such as your home Wi-Fi.
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <button
+                            type="button"
+                            onClick={makePrivate}
+                            disabled={privateState === 'working'}
+                            className="inline-flex h-8 items-center rounded-lg bg-amber-900 px-3 text-[13px] font-medium text-amber-50 transition-colors hover:bg-amber-950 focus-ring disabled:opacity-60 dark:bg-amber-200 dark:text-amber-950 dark:hover:bg-amber-100"
+                          >
+                            {privateState === 'working'
+                              ? 'Waiting for Windows’ permission…'
+                              : `Make ${phone.networkName ?? 'this network'} Private`}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void desktop?.openNetworkSettings(phone.networkKind ?? 'other')}
+                            className="rounded text-xs underline decoration-current/40 underline-offset-2 hover:decoration-current focus-ring"
+                          >
+                            {phone.networkKind === 'wifi' ? 'Change it in Wi-Fi settings instead' : 'Change it in network settings instead'}
+                          </button>
+                        </div>
+                        {privateState === 'declined' && (
+                          <p className="mt-2">Windows’ permission was declined, so nothing changed.</p>
+                        )}
+                        {privateState === 'failed' && (
+                          <p className="mt-2">
+                            That didn’t work. In the settings, open{' '}
+                            <strong>{phone.networkName ? `${phone.networkName} properties` : 'this network’s properties'}</strong>{' '}
+                            and set <strong>Network profile type</strong> to <strong>Private</strong>.
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="mt-1">
+                        In Windows Settings, open{' '}
+                        <strong>{phone.networkName ? `${phone.networkName} properties` : 'this network’s properties'}</strong>{' '}
+                        and set <strong>Network profile type</strong> to <strong>Private</strong>. Only do that on a
+                        network you trust, such as your home Wi-Fi.
+                      </p>
                     )}
                   </div>
                 )}

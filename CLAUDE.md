@@ -190,6 +190,9 @@ pinned exactly. This is the contract the pieces are built against:
     and `{type:'busy',busy}` when processing requests in flight (`trackJobs`:
     uploads, compressions, conversions, merges, from the window or a phone)
     go from none to some and back.
+  - Main to server, also: `{type:'phone-network',id}` gets the QR address's
+    network (`{category,name,kind,index}` or null), and
+    `{type:'network-changed',id}` drops the 20 s network/firewall cache.
   - Main to server: `{type:'install-tools',id}` gets
     `{type:'install-tools',id,outcome,packages}`; `{type:'missing-tools',id}`
     gets `{type:'missing-tools',id,missing}`; `{type:'shutdown'}` closes the
@@ -198,7 +201,8 @@ pinned exactly. This is the contract the pieces are built against:
 - **Bridge `window.fileminify`** (preload, `contextIsolation` and `sandbox`),
   typed in `src/lib/native.ts`: `updateStatus()`, `startUpdate()`,
   `onUpdateProgress(cb)`, `installTools()`, `setPhoneAccess(on)`,
-  `openLogFolder()`, `openNetworkSettings()`, `onDownloadSaved(cb)`, `showDownload(id)`,
+  `openLogFolder()`, `openNetworkSettings(kind)`, `makeNetworkPrivate()`,
+  `onDownloadSaved(cb)`, `showDownload(id)`,
   `setBusy(busy)`.
   - `ipcMain` handlers accept only the app window from the app origin.
   - No HTTP endpoint starts a program: `/native/*` goes, and `/config` keeps
@@ -221,6 +225,14 @@ pinned exactly. This is the contract the pieces are built against:
 - **Priority.** The server runs below normal priority, and the tools it starts
   inherit it: an encode gets the whole processor when the PC is otherwise
   idle, but what the user is doing comes first.
+- **Public networks.** `/config`'s `phone` says `publicNetwork` and, if so,
+  `firewall` (`blocks`/`allows`/`unknown`, from FileMinify.exe's own inbound
+  rules for the Public profile), `networkName` and `networkKind`. The panel
+  warns only when the firewall doesn't allow it. `makeNetworkPrivate()` runs
+  `Set-NetConnectionProfile -InterfaceIndex <n> -NetworkCategory Private`
+  behind Windows' admin prompt (n from the backend, checked to be an
+  integer). `openNetworkSettings(kind)` opens only `ms-settings:network-wifi`,
+  `-ethernet` or `ms-settings:network`.
 - **Busy work and sleep.** "Busy" is the page's own work (`setBusy`) or the
   server's `busy`. While busy, Windows is kept awake
   (`powerSaveBlocker 'prevent-app-suspension'`, released 30 s after the

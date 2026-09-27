@@ -56,33 +56,53 @@ const fromThisMachine = (req) =>
 // Windows itself (Get-NetConnectionProfile), matched by the adapter's name,
 // remembered for 20 s. False where it can't tell, and off Windows.
 const PROFILE_TTL_MS = 20_000;
-let profiles = null; // { at, categories: Map(alias -> 'Public'|'Private'|'DomainAuthenticated') }
+let profiles = null; // { at, networks: Map(alias -> { category, name, kind, index }) }
+
+// One line per network: adapter name, category, the network's own name (what
+// Windows Settings lists, e.g. the Wi-Fi's), and the adapter's physical media
+// ("Native 802.11" is Wi-Fi, "802.3" a cable: the same in every language,
+// unlike the adapter's name), tab-separated.
+const PROFILES = [
+  'Get-NetConnectionProfile | ForEach-Object {',
+  '  $media = (Get-NetAdapter -InterfaceIndex $_.InterfaceIndex -ErrorAction SilentlyContinue).PhysicalMediaType',
+  '  "$($_.InterfaceAlias)`t$($_.NetworkCategory)`t$($_.Name)`t$media`t$($_.InterfaceIndex)"',
+  '}',
+].join('\n');
+
+const kindOf = (media) => (/802\.11/.test(media) ? 'wifi' : /802\.3/.test(media) ? 'ethernet' : 'other');
 
 const readProfiles = () => new Promise((resolve) => {
   const shell = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-  execFile(shell, ['-NoProfile', '-NonInteractive', '-Command',
-    'Get-NetConnectionProfile | ForEach-Object { "$($_.InterfaceAlias)|$($_.NetworkCategory)" }'],
-  { windowsHide: true, timeout: 5000 }, (err, stdout) => {
-    const categories = new Map();
-    if (!err) {
-      for (const line of String(stdout).split(/\r?\n/)) {
-        const at = line.lastIndexOf('|');
-        if (at > 0) categories.set(line.slice(0, at).trim(), line.slice(at + 1).trim());
+  execFile(shell, ['-NoProfile', '-NonInteractive', '-Command', PROFILES],
+    { windowsHide: true, timeout: 5000 }, (err, stdout) => {
+      const networks = new Map();
+      if (!err) {
+        for (const line of String(stdout).split(/\r?\n/)) {
+          const [alias, category, name, media, index] = line.split('\t').map((part) => (part ?? '').trim());
+          if (alias && category) {
+            networks.set(alias, {
+              category,
+              name: name || null,
+              kind: kindOf(media || ''),
+              index: /^\d+$/.test(index || '') ? Number(index) : null,
+            });
+          }
+        }
       }
-    }
-    resolve(categories);
-  });
+      resolve(networks);
+    });
 });
 
-const onPublicNetwork = async (address) => {
-  if (process.platform !== 'win32' || !address) return false;
+// { category, name, kind } of the network an address is on, or null.
+const networkOf = async (address) => {
+  if (process.platform !== 'win32' || !address) return null;
   const alias = Object.entries(os.networkInterfaces())
     .find(([, list]) => (list || []).some((a) => a.address === address))?.[0];
-  if (!alias) return false;
+  if (!alias) return null;
   if (!profiles || Date.now() - profiles.at > PROFILE_TTL_MS) {
-    profiles = { at: Date.now(), categories: await readProfiles() };
+    profiles = { at: Date.now(), networks: await readProfiles() };
   }
-  return profiles.categories.get(alias) === 'Public';
+  return profiles.networks.get(alias) ?? null;
 };
 
 // A Public network blocks phones only if the firewall does: allowing
@@ -123,4 +143,14 @@ const firewallOnPublic = async () => {
   return firewall.verdict;
 };
 
-module.exports = { lanAddresses, fromThisMachine, onPublicNetwork, firewallOnPublic };
+// The network the phone address (the QR code's) is on, for the app's "make
+// it Private" (desktop.js): { category, name, kind, index } or null.
+const phoneNetwork = async () => networkOf((await lanAddresses())[0]);
+
+// Windows' settings changed (the app made a network Private): ask afresh.
+const forgetNetworkState = () => {
+  profiles = null;
+  firewall = null;
+};
+
+module.exports = { lanAddresses, fromThisMachine, networkOf, firewallOnPublic, phoneNetwork, forgetNetworkState };

@@ -46,8 +46,10 @@ const register = ({ getWindow, getOrigin, serverUp, handlers }) => {
   handle('logs:open', async () => {
     await handlers.openLogFolder();
   });
-  handle('network:settings', async () => {
-    await handlers.openNetworkSettings();
+  handle('network:private', () => handlers.makeNetworkPrivate());
+  handle('network:settings', async (kind) => {
+    // Only a name from a fixed list; main maps it to a fixed address.
+    await handlers.openNetworkSettings(kind === 'wifi' || kind === 'ethernet' ? kind : 'other');
   });
   handle('download:show', async (id) => {
     if (typeof id !== 'string') throw new Error('Expected a download id.');

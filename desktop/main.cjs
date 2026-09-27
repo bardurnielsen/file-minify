@@ -10,6 +10,7 @@
 // icon is the way back in, and out.
 const fs = require('fs');
 const path = require('path');
+const { execFile } = require('child_process');
 const { app, dialog, Menu, powerSaveBlocker, shell } = require('electron');
 const config = require('./lib/config.cjs');
 
@@ -245,6 +246,42 @@ const setPhoneAccess = (on) => {
 };
 
 // The server's answer to install-tools, as the page's installTools() gives it.
+// Make the phone address's network Private, as the phone panel offers when
+// Windows treats it as Public and the firewall keeps phones out: Windows' own
+// Set-NetConnectionProfile, for that one network only, behind Windows' admin
+// prompt. The network is named by its interface number, checked to be a
+// plain integer, so nothing from outside ever becomes part of the command.
+// { ok: true } | { ok: false, problem: 'declined' | 'failed' }
+const POWERSHELL = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+const runElevated = (command) => new Promise((resolve) => {
+  const script = `try { $p = Start-Process -FilePath '${POWERSHELL}' -Verb RunAs -Wait -PassThru -WindowStyle Hidden ` +
+    `-ArgumentList @('-NoProfile', '-NonInteractive', '-Command', '${command}'); exit $p.ExitCode } catch { exit 1223 }`;
+  execFile(POWERSHELL, ['-NoProfile', '-NonInteractive', '-Command', script],
+    { windowsHide: true, timeout: 180_000 }, (err) => resolve(err ? (err.code ?? 1) : 0));
+});
+const makeNetworkPrivate = async () => {
+  if (process.platform !== 'win32') return { ok: false, problem: 'failed' };
+  try {
+    const { network } = await server.request('phone-network');
+    if (!network || network.category !== 'Public') return { ok: true };
+    if (!Number.isInteger(network.index)) return { ok: false, problem: 'failed' };
+    log.info(`Making network ${network.index} Private`);
+    const code = await runElevated(`Set-NetConnectionProfile -InterfaceIndex ${network.index} -NetworkCategory Private`);
+    await server.request('network-changed');
+    // 1223: the admin prompt was answered No (ERROR_CANCELLED).
+    if (code === 1223) return { ok: false, problem: 'declined' };
+    const { network: after } = await server.request('phone-network');
+    if (after?.category === 'Public') {
+      log.warn(`The network is still Public (exit ${code})`);
+      return { ok: false, problem: 'failed' };
+    }
+    return { ok: true };
+  } catch (err) {
+    log.error(`Making the network Private failed: ${err.message}`);
+    return { ok: false, problem: 'failed' };
+  }
+};
+
 const installTools = async () => {
   try {
     const reply = await server.request('install-tools');
@@ -260,11 +297,17 @@ const installTools = async () => {
   }
 };
 
-// Windows' Network & internet page: it shows the connected network (Wi-Fi or
-// cable) with its Properties, where Public becomes Private. Only this fixed
-// address is ever opened; FileMinify never changes the setting itself.
-const openNetworkSettings = async () => {
-  await shell.openExternal('ms-settings:network');
+// Windows' settings page for the kind of network the phone address is on:
+// its connected network's "<name> properties" is where Public becomes
+// Private. Only these fixed addresses are ever opened; FileMinify never
+// changes the setting itself.
+const NETWORK_PAGES = {
+  wifi: 'ms-settings:network-wifi',
+  ethernet: 'ms-settings:network-ethernet',
+  other: 'ms-settings:network',
+};
+const openNetworkSettings = async (kind) => {
+  await shell.openExternal(NETWORK_PAGES[kind] ?? NETWORK_PAGES.other);
 };
 
 const openLogFolder = async () => {
@@ -442,6 +485,7 @@ if (!app.requestSingleInstanceLock()) {
         setPhoneAccess,
         openLogFolder,
         openNetworkSettings,
+        makeNetworkPrivate,
         showDownload: async (id) => appWindow.showDownload(id),
         setBusy: (value) => {
           busy = value;

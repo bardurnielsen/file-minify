@@ -28,8 +28,16 @@ export interface DesktopBridge {
    */
   setPhoneAccess(on: boolean): Promise<void>;
   openLogFolder(): Promise<void>;
-  /** Windows' Network & internet settings, where a Public network is made Private. */
-  openNetworkSettings(): Promise<void>;
+  /**
+   * Windows' settings page for the network (Wi-Fi, Ethernet, or Network &
+   * internet), where a Public network is made Private.
+   */
+  openNetworkSettings(kind: 'wifi' | 'ethernet' | 'other'): Promise<void>;
+  /**
+   * Make the phone address's network Private (Windows asks for permission).
+   * Resolves once done, declined (the admin prompt answered No) or failed.
+   */
+  makeNetworkPrivate(): Promise<{ ok: true } | { ok: false; problem: 'declined' | 'failed' }>;
   /** A download was saved to the Downloads folder; `id` is for showDownload. */
   onDownloadSaved(cb: (download: { id: string; name: string }) => void): () => void;
   /** Show a saved download, selected, in Explorer. */
