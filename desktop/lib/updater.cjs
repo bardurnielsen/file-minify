@@ -37,6 +37,10 @@ const configure = (mainSettings, hooks = {}) => {
   updater.logger = log;
   updater.autoDownload = false;
   updater.autoInstallOnAppQuit = false;
+  // Releases carry the full installer (plus its blockmap, for differential
+  // downloads), never a web installer; said explicitly, since electron-updater
+  // warns and will change the default.
+  updater.disableWebInstaller = true;
   updater.allowDowngrade = false;
   updater.allowPrerelease = settings.updatePrerelease;
   if (settings.updateFeed) {
