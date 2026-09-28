@@ -12,6 +12,8 @@ const LOCALAPPDATA = process.env.LOCALAPPDATA ?? '';
 /** The installed app, where the per-user NSIS installer puts it. */
 export const EXE = process.env.FM_EXE ?? join(LOCALAPPDATA, 'Programs', 'fileminify-app', 'FileMinify.exe');
 export const SETTINGS = join(LOCALAPPDATA, 'FileMinify', 'settings.env');
+/** Main's own log: what it opened in the browser, and what it blocked. */
+export const DESKTOP_LOG = join(LOCALAPPDATA, 'FileMinify', 'logs', 'desktop.log');
 
 /** The version the workflow built and installed, and the one its update feed offers. */
 export const VERSION = process.env.FM_TEST_VERSION ?? '';

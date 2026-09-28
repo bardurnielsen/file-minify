@@ -174,7 +174,8 @@ pinned exactly. This is the contract the pieces are built against:
     update's `quitAndInstall` skips the question and the tray.
   - Window: size and place in `app\window.json`, restored only if still on a
     screen; no menu; new windows denied, only `https://github.com/bardurnielsen/file-minify/`
-    links open in the browser; navigation stays on the app's origin; every
+    links and the author's profile (exactly `https://github.com/bardurnielsen`,
+    the footer's "Get in touch") open in the browser; navigation stays on the app's origin; every
     permission but `clipboard-sanitized-write` denied. Downloads save
     straight to Downloads (`name (1).ext` when taken); the page gets only an
     opaque id, never a path.
