@@ -18,6 +18,11 @@ updates:
       # Tailwind 4 replaces tailwind.config.js with CSS-first config.
       - dependency-name: tailwindcss
         update-types: ["version-update:semver-major"]
+      # TypeScript 7 (the Go compiler) is outside typescript-eslint's peer
+      # range (<6.1 as of 8.70.1), so npm refuses to install it (#35).
+      # Remove this once typescript-eslint accepts 7, and bump both together.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
   # The browser tests' runner; run.sh picks the Playwright image matching
   # this version, so a bump here updates the browsers too.
   - package-ecosystem: npm
