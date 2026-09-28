@@ -11,8 +11,10 @@ const log = require('./log.cjs');
 const BACKGROUND = { light: '#fafafa', dark: '#09090b' };
 const DEFAULT_SIZE = { width: 1000, height: 800 };
 const SAVE_DELAY_MS = 500;
-// Links that may open in the browser: this project on GitHub (release notes).
+// Links that may open in the browser: this project on GitHub (release notes),
+// and the author's profile exactly (the footer's "Get in touch").
 const EXTERNAL_PREFIX = 'https://github.com/bardurnielsen/file-minify/';
+const EXTERNAL_PAGES = ['https://github.com/bardurnielsen', 'https://github.com/bardurnielsen/'];
 // How many saved downloads "Show in folder" remembers.
 const DOWNLOADS_KEPT = 200;
 
@@ -33,6 +35,7 @@ const setOrigin = (port) => {
 };
 
 const openExternal = (url) => {
+  log.info(`Opening ${url} in the browser`);
   shell.openExternal(url).catch((err) => log.warn(`Could not open ${url}: ${err.message}`));
 };
 
@@ -40,7 +43,7 @@ const isExternalAllowed = (url) => {
   try {
     const u = new URL(url);
     return u.protocol === 'https:' && u.host === 'github.com' && !u.username && !u.password &&
-      u.href.startsWith(EXTERNAL_PREFIX);
+      (u.href.startsWith(EXTERNAL_PREFIX) || EXTERNAL_PAGES.includes(u.href));
   } catch {
     return false;
   }
