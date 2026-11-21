@@ -132,6 +132,36 @@ What nginx did and native mode now does itself:
   because a phone's upload now streams straight into Node.
 - **`X-Frame-Options: DENY`** and nginx's CSP.
 
+### winget and code signing (status 2026-11-21)
+
+- **winget.** 1.0.1 was accepted as `BardurNielsen.FileMinify` on 2026-11-19
+  (microsoft/winget-pkgs#441409, manual review, took weeks). 2.0.2 is in
+  review as #485920, sent from the fork `bardurnielsen/winget-pkgs`. The
+  catalog's installer type changes there from `inno` to `nullsoft`, so a
+  reviewer may look by hand. For a new version: copy the last folder in
+  `packaging/winget/BardurNielsen.FileMinify/`, change the version, URL,
+  SHA-256 (from the `release` job or GitHub's asset digest) and
+  ReleaseNotesUrl, check it with `winget validate --manifest <folder>` on
+  Windows, then put the three files under
+  `manifests/b/BardurNielsen/FileMinify/<ver>/` on a branch of the fork
+  (synced first) and open a PR titled "Update: BardurNielsen.FileMinify to
+  <ver>" with winget-pkgs' checklist. ManifestVersion is 1.28.0 (1.12.0 was
+  flagged deprecated), and `PrivacyUrl` points at PRIVACY.md, both asked for
+  by the 1.0.1 reviewer.
+- **Code signing.** Releases up to 2.0.2 are unsigned. Applied to SignPath
+  Foundation (free for open source) on 2026-11-21; their conditions are the
+  README's "Code signing policy" section (attribution, roles, privacy link;
+  keep it) and a manual approval per release. Reputation was thin (two
+  months old, ~230 installer downloads), so a refusal is possible; the
+  fallback is Certum's open-source certificate (about EUR 30-70 a year, cloud
+  key for CI). Once accepted, add their GitHub Actions signing step to
+  `windows.yml` before `release`, so latest.yml's SHA-512 is of the signed
+  exe.
+- **Held back on purpose:** Tailwind 4 (#65; the PostCSS plugin moved to
+  `@tailwindcss/postcss` and needs a migration; Dependabot ignores the
+  major). The minimatch alert in `desktop/` is electron-builder's own dev
+  dependency, which pins `^10`.
+
 ### Desktop app (2.0, released 2026-09-27 as v2.0.0: `desktop/`, replaced 1.0.x's `windows/`)
 
 Electron 44.4.5 (Node 24), electron-builder 26.16.1, electron-updater 6.8.9,
