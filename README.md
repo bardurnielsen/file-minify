@@ -315,6 +315,21 @@ If you do front it with another proxy, pass the original `Host` header through
 `Origin` against it, and a proxy that rewrites `Host` will make the app reject its
 own requests.
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by
+[SignPath Foundation](https://signpath.org).
+
+- **Committers and reviewers:** [Bárður Nielsen](https://github.com/bardurnielsen)
+- **Approvers:** [Bárður Nielsen](https://github.com/bardurnielsen)
+
+The Windows installer is built from this repository by GitHub Actions
+(`.github/workflows/windows.yml`) and signed only after each release has been
+approved by hand. Signing is being set up: releases up to 2.0.2 are unsigned.
+
+**Privacy:** see [PRIVACY.md](PRIVACY.md) for what the app does with your files
+and which network connections it makes.
+
 ## Licence
 
 MIT — see [LICENSE](LICENSE).
