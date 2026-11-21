@@ -135,10 +135,10 @@ What nginx did and native mode now does itself:
 ### winget and code signing (status 2026-11-21)
 
 - **winget.** 1.0.1 was accepted as `BardurNielsen.FileMinify` on 2026-11-19
-  (microsoft/winget-pkgs#441409, manual review, took weeks). 2.0.2 is in
-  review as #485920, sent from the fork `bardurnielsen/winget-pkgs`. The
-  catalog's installer type changes there from `inno` to `nullsoft`, so a
-  reviewer may look by hand. For a new version: copy the last folder in
+  (microsoft/winget-pkgs#441409, manual review, took weeks). 2.0.2 (#485920,
+  from the fork `bardurnielsen/winget-pkgs`, installer type `inno` ->
+  `nullsoft`) was merged 80 minutes after submitting, on 2026-11-21. The CLA
+  is per account and already signed. For a new version: copy the last folder in
   `packaging/winget/BardurNielsen.FileMinify/`, change the version, URL,
   SHA-256 (from the `release` job or GitHub's asset digest) and
   ReleaseNotesUrl, check it with `winget validate --manifest <folder>` on
