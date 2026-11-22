@@ -148,13 +148,12 @@ What nginx did and native mode now does itself:
   <ver>" with winget-pkgs' checklist. ManifestVersion is 1.28.0 (1.12.0 was
   flagged deprecated), and `PrivacyUrl` points at PRIVACY.md, both asked for
   by the 1.0.1 reviewer.
-- **Code signing.** Releases up to 2.0.2 are unsigned. Applied to SignPath
-  Foundation (free for open source) on 2026-11-21; their conditions are the
-  README's "Code signing policy" section (attribution, roles, privacy link;
-  keep it) and a manual approval per release. Reputation was thin (two
-  months old, ~230 installer downloads), so a refusal is possible; the
-  fallback is Certum's open-source certificate (about EUR 30-70 a year, cloud
-  key for CI). Once accepted, add their GitHub Actions signing step to
+- **Code signing.** Releases are unsigned. SignPath Foundation (free for
+  open source) refused on 2026-11-21: too little public visibility (stars,
+  forks, articles, discussions); reapplying later is welcome, and needs the
+  README's code signing policy section back (attribution, roles, privacy
+  link). Alternatives: SignPath paid, Certum's open-source certificate
+  (cloud key for CI), Azure Trusted Signing. A signing step goes into
   `windows.yml` before `release`, so latest.yml's SHA-512 is of the signed
   exe.
 - **Held back on purpose:** Tailwind 4 (#65; the PostCSS plugin moved to
