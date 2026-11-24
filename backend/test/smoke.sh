@@ -127,6 +127,40 @@ esac
 c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/merge" -H 'Content-Type: application/json' -d "{\"ids\":[\"$ID_fx_png\"]}")
 [ "$c" = "400" ] && { echo "PASS  merge of one file -> 400"; pass=$((pass+1)); } || { echo "FAIL  merge of one file -> $c"; fail=$((fail+1)); }
 
+# Rotation: each source's pages turn by its entry in `rotate`. pdf-lib keeps
+# page dictionaries in compressed object streams, so look for /Rotate in the
+# inflated streams too. Python is only used for that look; without it the
+# check is skipped, not failed.
+r=$(curl -s -X POST "$API/merge" -H 'Content-Type: application/json' -d "{\"ids\":[\"$ID_fx_png\",\"$ID_fx_pdf\"],\"rotate\":[90,180]}")
+check "merge with rotate [90,180]" "$r" merge
+rid=$(printf '%s' "$r" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+PY=; for p in python3 python; do "$p" -c pass 2>/dev/null && { PY=$p; break; }; done
+if [ -n "$PY" ] && [ -s "$OUT/out_$rid" ]; then
+  turns=$("$PY" - "$(native "$OUT/out_$rid")" <<'EOF'
+import re, sys, zlib
+data = open(sys.argv[1], "rb").read()
+chunks = [data]
+for m in re.finditer(rb"stream\r?\n(.*?)endstream", data, re.S):
+    try: chunks.append(zlib.decompress(m.group(1)))
+    except Exception: pass
+print(" ".join(sorted({a.decode() for c in chunks for a in re.findall(rb"/Rotate (\d+)", c)})))
+EOF
+)
+  case " $turns " in *" 90 "*) ok90=1 ;; *) ok90= ;; esac
+  case " $turns " in *" 180 "*) ok180=1 ;; *) ok180= ;; esac
+  if [ -n "$ok90" ] && [ -n "$ok180" ]; then
+    echo "PASS  merged pages carry /Rotate -> $turns"; pass=$((pass+1))
+  else
+    echo "FAIL  merged pages carry /Rotate -> '${turns}'"; fail=$((fail+1))
+  fi
+else
+  echo "SKIP  /Rotate check (no python)"
+fi
+for bad in '[45,0]' '[90]' '"90"'; do
+  c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/merge" -H 'Content-Type: application/json' -d "{\"ids\":[\"$ID_fx_png\",\"$ID_fx_pdf\"],\"rotate\":$bad}")
+  [ "$c" = "400" ] && { echo "PASS  merge rotate $bad -> 400"; pass=$((pass+1)); } || { echo "FAIL  merge rotate $bad -> $c"; fail=$((fail+1)); }
+done
+
 echo; echo "=== SECURITY REGRESSIONS ==="
 c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/compression/$ID_fx_mp4" -H 'Content-Type: application/json' -d '{"format":"mp4$(touch /app/PWNED_FMT)"}')
 [ "$c" = "400" ] && { echo "PASS  format injection -> 400"; pass=$((pass+1)); } || { echo "FAIL  format injection -> $c"; fail=$((fail+1)); }

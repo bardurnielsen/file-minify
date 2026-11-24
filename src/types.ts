@@ -136,6 +136,8 @@ export interface MergeState {
   order: string[];
   /** Local file ids the user deliberately left out. */
   excluded: string[];
+  /** Clockwise turn (90, 180 or 270) per local file id; absent means none. */
+  rotation: Record<string, number>;
   name: string;
   result?: MergeResult;
   error?: string;

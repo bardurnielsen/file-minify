@@ -10,6 +10,7 @@ import {
   Layers,
   Pencil,
   Plus,
+  RotateCw,
   Share2,
   X,
 } from 'lucide-react';
@@ -43,11 +44,20 @@ const move = (list: string[], from: number, to: number) => {
   return next;
 };
 
-const Thumb: React.FC<{ file: FileItem }> = ({ file }) =>
+/** The thumbnail turns with the file, so the list shows how its pages will sit. */
+const Thumb: React.FC<{ file: FileItem; turn: number }> = ({ file, turn }) =>
   file.previewUrl ? (
-    <img src={file.previewUrl} alt="" className="h-9 w-9 shrink-0 rounded-lg object-cover ring-1 ring-inset ring-zinc-900/5" />
+    <img
+      src={file.previewUrl}
+      alt=""
+      style={{ transform: `rotate(${turn}deg)` }}
+      className="h-9 w-9 shrink-0 rounded-lg object-cover ring-1 ring-inset ring-zinc-900/5 transition-transform"
+    />
   ) : (
-    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-[10px] font-semibold uppercase text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+    <div
+      style={{ transform: `rotate(${turn}deg)` }}
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-[10px] font-semibold uppercase text-zinc-500 transition-transform dark:bg-zinc-800 dark:text-zinc-400"
+    >
       {extensionOf(file.name).slice(0, 4)}
     </div>
   );
@@ -57,9 +67,11 @@ const OrderRow: React.FC<{
   index: number;
   count: number;
   failed: boolean;
+  turn: number;
   onMove: (to: number) => void;
+  onRotate: () => void;
   onExclude: () => void;
-}> = ({ file, index, count, failed, onMove, onExclude }) => {
+}> = ({ file, index, count, failed, turn, onMove, onRotate, onExclude }) => {
   const controls = useDragControls();
   const ready = isMergeReady(file);
   return (
@@ -82,16 +94,20 @@ const OrderRow: React.FC<{
         <GripVertical className="h-4 w-4" />
       </button>
       <span className="tnum w-5 shrink-0 text-center text-xs font-medium text-zinc-400">{index + 1}</span>
-      <Thumb file={file} />
+      <Thumb file={file} turn={turn} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-50">{displayName(file)}</p>
         <p className="truncate text-xs text-zinc-400 dark:text-zinc-500">
           {TYPE_LABEL[file.type]} · {formatBytes(file.size)}
+          {turn > 0 && ` · turned ${turn}°`}
           {!ready && ' · still uploading'}
           {failed && <span className="text-rose-600 dark:text-rose-400"> · couldn&apos;t become a PDF</span>}
         </p>
       </div>
       <div className="flex shrink-0 items-center">
+        <Button variant="ghost" size="icon" aria-label="Rotate 90° clockwise" title="Turn every page of this file 90°" onClick={onRotate}>
+          <RotateCw className="h-3.5 w-3.5" />
+        </Button>
         <Button variant="ghost" size="icon" aria-label="Move up" disabled={index === 0} onClick={() => onMove(index - 1)}>
           <ArrowUp className="h-3.5 w-3.5" />
         </Button>
@@ -135,7 +151,8 @@ const MergeDialog: React.FC<MergeDialogProps> = ({ open, onOpenChange, files, me
                 Merge into one PDF
               </Dialog.Title>
               <Dialog.Description id="merge-desc" className="mt-1 text-[13px] text-zinc-500 dark:text-zinc-400">
-                Pages follow this order. Drag or use the arrows to change it.
+                Pages follow this order. Drag or use the arrows to change it, and turn a
+                file&apos;s pages with the rotate button.
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>
@@ -160,7 +177,13 @@ const MergeDialog: React.FC<MergeDialogProps> = ({ open, onOpenChange, files, me
                     index={i}
                     count={included.length}
                     failed={merge.status === 'error' && merge.failedFileId === file.id}
+                    turn={merge.rotation[file.id] ?? 0}
                     onMove={(to) => onChange({ order: move(merge.order, i, to) })}
+                    onRotate={() =>
+                      onChange({
+                        rotation: { ...merge.rotation, [file.id]: ((merge.rotation[file.id] ?? 0) + 90) % 360 },
+                      })
+                    }
                     onExclude={() => exclude(file.id)}
                   />
                 ))}

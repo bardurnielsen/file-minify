@@ -371,7 +371,10 @@ const FileProcessor: React.FC = () => {
     if (sources.length < 2) return;
     setMerge({ status: 'running', error: undefined, failedFileId: undefined, result: undefined });
     try {
-      const data = await mergeFiles(sources.map((f) => mergeSourceId(f)!));
+      const data = await mergeFiles(
+        sources.map((f) => mergeSourceId(f)!),
+        sources.map((f) => m.rotation[f.id] ?? 0)
+      );
       useFiles.getState().setMerge({
         status: 'done',
         result: data,

@@ -2,7 +2,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
-const { PDFDocument } = require('pdf-lib');
+const { PDFDocument, degrees } = require('pdf-lib');
 const { AppError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
 const { toPdf, PDF_SOURCE_EXTS } = require('../utils/converters');
@@ -11,6 +11,7 @@ const { isSafeId } = require('../utils/safeId');
 const router = express.Router();
 const { TEMP_DIR } = require('../utils/paths');
 const MAX_SOURCES = 20;
+const TURNS = [0, 90, 180, 270];
 
 const failWith = (message, statusCode, failedId) => {
   const err = new AppError(message, statusCode);
@@ -19,9 +20,12 @@ const failWith = (message, statusCode, failedId) => {
 };
 
 /**
- * POST /merge  { ids: string[] }
+ * POST /merge  { ids: string[], rotate?: number[] }
  *
- * `ids` is the page order. Every source is converted to PDF (or passed through
+ * `ids` is the page order. `rotate`, if given, runs beside it: how far to turn
+ * every page of that source clockwise (0, 90, 180 or 270), on top of any
+ * rotation the page already has. It only changes the page's /Rotate entry, so
+ * nothing is re-encoded. Every source is converted to PDF (or passed through
  * if it already is one) strictly in sequence - that both preserves the order
  * and keeps LibreOffice to one job at a time - and the pages are stitched
  * together with pdf-lib. The merge is atomic: if any source cannot be turned
@@ -29,7 +33,7 @@ const failWith = (message, statusCode, failedId) => {
  * document silently missing one of its parts is the wrong document.
  */
 router.post('/', async (req, res, next) => {
-  const { ids } = req.body || {};
+  const { ids, rotate } = req.body || {};
   const jobId = uuidv4();
   const scratchDir = path.join(TEMP_DIR, `merge-${jobId}`);
 
@@ -39,6 +43,10 @@ router.post('/', async (req, res, next) => {
     }
     if (ids.length > MAX_SOURCES) {
       throw new AppError(`At most ${MAX_SOURCES} files can be merged at once`, 400);
+    }
+    if (rotate !== undefined
+      && (!Array.isArray(rotate) || rotate.length !== ids.length || !rotate.every((r) => TURNS.includes(r)))) {
+      throw new AppError('rotate must give 0, 90, 180 or 270 for each file, in the same order as ids', 400);
     }
     for (const id of ids) {
       if (!isSafeId(id)) throw new AppError('Invalid file id', 400);
@@ -55,7 +63,7 @@ router.post('/', async (req, res, next) => {
     const merged = await PDFDocument.create();
     let fileCount = 0;
 
-    for (const id of ids) {
+    for (const [index, id] of ids.entries()) {
       const sourcePath = path.join(TEMP_DIR, id);
 
       let pdfPath;
@@ -75,7 +83,12 @@ router.post('/', async (req, res, next) => {
       }
 
       const pages = await merged.copyPages(doc, doc.getPageIndices());
-      pages.forEach((page) => merged.addPage(page));
+      const turn = rotate ? rotate[index] : 0;
+      pages.forEach((page) => {
+        // A page may already carry any multiple of 90, negative included.
+        if (turn) page.setRotation(degrees((((page.getRotation().angle + turn) % 360) + 360) % 360));
+        merged.addPage(page);
+      });
       fileCount += 1;
     }
 

@@ -112,12 +112,15 @@ export interface MergeResponse {
   fileCount: number;
 }
 
-/** POST /merge with an explicit, ordered list of temp-file ids. */
-export const mergeFiles = async (ids: string[]): Promise<MergeResponse> => {
+/**
+ * POST /merge with an explicit, ordered list of temp-file ids, and beside it
+ * how far to turn each one's pages clockwise (sent only when any turns).
+ */
+export const mergeFiles = async (ids: string[], rotate: number[] = []): Promise<MergeResponse> => {
   const response = await fetch(`${API}/merge`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ids }),
+    body: JSON.stringify(rotate.some(Boolean) ? { ids, rotate } : { ids }),
   });
   const raw = await response.text();
   let json: { success?: boolean; error?: string; failedId?: string; data?: MergeResponse } = {};

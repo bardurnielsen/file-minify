@@ -111,6 +111,29 @@ test('the merge order follows the arrows and dragging, all the way to the server
   await expect(dialog.getByText(/\d+ pages from 3 files/)).toBeVisible({ timeout: 90_000 });
 });
 
+test('rotating a file in the merge turns its pages, and only its own', async ({ page }) => {
+  await open(page);
+  await drop(page, [FILES.png, FILES.pdf]);
+  for (const name of ['fx.png', 'fx.pdf']) await finished(row(page, name));
+  await page.getByRole('button', { name: 'Merge to PDF' }).click();
+  const dialog = page.getByRole('dialog');
+  const pdfRow = dialog.getByRole('listitem').filter({ hasText: 'fx.pdf' });
+
+  // Twice round: 90, then 180. The row says so; the other file is untouched.
+  await pdfRow.getByRole('button', { name: 'Rotate 90° clockwise' }).click();
+  await expect(pdfRow).toContainText('turned 90°');
+  await pdfRow.getByRole('button', { name: 'Rotate 90° clockwise' }).click();
+  await expect(pdfRow).toContainText('turned 180°');
+  await expect(dialog.getByRole('listitem').filter({ hasText: 'fx.png' })).not.toContainText('turned');
+
+  // The turn follows the file when the order changes, all the way to the server.
+  await pdfRow.getByRole('button', { name: 'Move up' }).click();
+  const request = page.waitForRequest((r) => r.url().endsWith('/api/merge') && r.method() === 'POST');
+  await dialog.getByRole('button', { name: /^Merge 2 files$/ }).click();
+  expect((await request).postDataJSON().rotate).toEqual([180, 0]);
+  await expect(dialog.getByText(/\d+ pages? from 2 files/)).toBeVisible({ timeout: 90_000 });
+});
+
 test("the drop zone shows the server's upload limit", async ({ page, request }) => {
   const config = await (await request.get('/api/config')).json();
   const mb = Math.round(config.maxFileBytes / 1024 / 1024);

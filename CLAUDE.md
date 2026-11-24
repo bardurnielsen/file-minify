@@ -72,7 +72,9 @@ which Radix's `asChild` passes a ref through); don't reach for `forwardRef`.
 - `routes/upload.js` — Multer, `<uuid><ext>` naming, MIME allowlist.
 - `routes/compression.js` — Sharp (images), Ghostscript (PDF), FFmpeg (video).
 - `routes/conversion.js` — between formats, using the shared converters.
-- `routes/merge.js` — ordered merge into one PDF via pdf-lib.
+- `routes/merge.js` — ordered merge into one PDF via pdf-lib, with an
+  optional per-file clockwise turn (`rotate`, beside `ids`) added to each
+  page's existing /Rotate.
 - `utils/converters.js` — `toPdf` plus `PDF_SOURCE_EXTS`, shared by conversion and
   merge, and the LibreOffice lock.
 - `utils/run.js` — every external command goes through `run(name, args)`, which
@@ -494,6 +496,12 @@ pinned exactly. This is the contract the pieces are built against:
   `failedId` naming it. The UI offers leaving it out.
 - **Merge uses the processed output** (`processedId ?? serverId`), so a converted
   docx is not pushed through LibreOffice twice.
+- **Merge rotation is per file and lossless.** `merge.rotation` is keyed by the
+  local file id, so a turn follows the file through reordering and is dropped
+  when the file is removed; `rotate` is sent only when something turns. The
+  backend adds the turn to the page's own /Rotate (normalised to 0-359)
+  rather than re-rendering. smoke.sh finds /Rotate inside pdf-lib's
+  compressed object streams with Python, and skips that one check without it.
 - **A foreign `Origin` is rejected with a 403**, not just denied CORS headers. A
   multipart POST is a "simple" request: the browser sends it regardless and only
   hides the reply, so CORS alone still let a hostile page upload a file and start
