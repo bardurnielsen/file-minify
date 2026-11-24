@@ -151,12 +151,32 @@ test('the merge shows every page, and a single page can be turned', async ({ pag
   await expect(dialog.getByRole('listitem').filter({ hasText: 'fx.pdf' })).toContainText('2 pages');
   await expect(dialog.getByText('Pages (3)')).toBeVisible();
 
-  // Only page 2 of the PDF turns; the server gets one turn per page for it.
+  // Only page 2 of the PDF turns.
   await pdfPages.getByRole('button', { name: 'Rotate page 2 of fx.pdf' }).click();
   await expect(pdfPages.getByText('90°')).toHaveCount(1);
+
+  // Tapping a page shows it large, drawn by the server; the arrows step on
+  // across files, its rotate button turns that page, and Esc goes back.
+  await pdfPages.getByRole('button', { name: 'Show page 1 of fx.pdf larger' }).click();
+  const large = dialog.getByRole('region', { name: 'fx.pdf, page 1 of 2' });
+  await expect(large).toBeVisible();
+  const big = large.getByRole('img', { name: 'Page 1 of fx.pdf, large' });
+  await expect.poll(() => big.evaluate((el: HTMLImageElement) => el.naturalWidth), { timeout: 30_000 }).toBeGreaterThan(500);
+  await page.keyboard.press('ArrowRight');
+  const second = dialog.getByRole('region', { name: 'fx.pdf, page 2 of 2' });
+  await expect(second).toContainText('90°');
+  await second.getByRole('button', { name: 'Rotate this page' }).click();
+  await expect(second).toContainText('180°');
+  await expect(second.getByRole('button', { name: 'Next page' })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await expect(second).toBeHidden();
+  await expect(dialog).toBeVisible();
+  await expect(pdfPages.getByText('180°')).toHaveCount(1);
+
+  // The server gets one turn per page for the PDF.
   const request = page.waitForRequest((r) => r.url().endsWith('/api/merge') && r.method() === 'POST');
   await dialog.getByRole('button', { name: /^Merge 2 files$/ }).click();
-  expect((await request).postDataJSON().rotate).toEqual([0, [0, 90]]);
+  expect((await request).postDataJSON().rotate).toEqual([0, [0, 180]]);
   await expect(dialog.getByText(/3 pages from 2 files/)).toBeVisible({ timeout: 90_000 });
 });
 

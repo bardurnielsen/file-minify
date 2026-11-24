@@ -516,7 +516,10 @@ pinned exactly. This is the contract the pieces are built against:
   LibreOffice run). Deleting the upload removes it; the hourly clean-up
   sweeps the rest. The app asks for one source at a time, in page order, only
   while the dialog is open, keyed by `mergeSourceId`, so a re-processed file
-  is previewed afresh.
+  is previewed afresh. Tapping a tile asks `/merge/page` for that one page at
+  1200 px (JPEG, cached as `large-<n>.jpg` beside the preview); the large view
+  sits over the dialog, its arrows step through every previewed page in merge
+  order, and Esc leaves it before the dialog (`onEscapeKeyDown`).
 - **A foreign `Origin` is rejected with a 403**, not just denied CORS headers. A
   multipart POST is a "simple" request: the browser sends it regardless and only
   hides the reply, so CORS alone still let a hostile page upload a file and start

@@ -185,6 +185,14 @@ for bad in "$ID_fx_mp4:400" "..%2Fetc%2Fpasswd:400" "nope.pdf:404"; do
 done
 r=$(curl -s -X POST "$API/merge" -H 'Content-Type: application/json' -d "{\"ids\":[\"$ID_fx_pdf\",\"$ID_fx_docx\"]}")
 check "merge reuses the previewed docx" "$r" merge
+# One page large, for when a thumbnail is too small to tell.
+r=$(curl -s -X POST "$API/merge/page" -H 'Content-Type: application/json' -d "{\"id\":\"$ID_fx_pdf\",\"page\":2}" -w ' %{http_code}')
+case "$r" in *'"image":"data:image/jpeg;base64,'*" 200") echo "PASS  large page 2 of fx_pdf -> $(( $(printf '%s' "$r" | wc -c) / 1024 )) KB"; pass=$((pass+1)) ;;
+  *) echo "FAIL  large page -> $(printf '%s' "$r" | tail -c 160)"; fail=$((fail+1)) ;; esac
+for bad in 0 3 '"1"' 1.5; do
+  c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/merge/page" -H 'Content-Type: application/json' -d "{\"id\":\"$ID_fx_pdf\",\"page\":$bad}")
+  [ "$c" = "400" ] && { echo "PASS  large page $bad -> 400"; pass=$((pass+1)); } || { echo "FAIL  large page $bad -> $c"; fail=$((fail+1)); }
+done
 
 echo; echo "=== SECURITY REGRESSIONS ==="
 c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/compression/$ID_fx_mp4" -H 'Content-Type: application/json' -d '{"format":"mp4$(touch /app/PWNED_FMT)"}')

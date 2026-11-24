@@ -124,6 +124,18 @@ export const mergePages = async (id: string): Promise<{ pageCount: number; pages
   return json.data;
 };
 
+/** POST /merge/page: one page (from 1) drawn large, as a data: URL. */
+export const mergePage = async (id: string, page: number): Promise<string> => {
+  const response = await fetch(`${API}/merge/page`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, page }),
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok || !json.success) throw new Error(json.error || `No page (${response.status})`);
+  return json.data.image;
+};
+
 /**
  * POST /merge with an explicit, ordered list of temp-file ids, and beside it
  * how far to turn each one's pages clockwise: one number for the whole file,

@@ -5,6 +5,8 @@ import {
   AlertCircle,
   ArrowDown,
   ArrowUp,
+  ChevronLeft,
+  ChevronRight,
   Download,
   GripVertical,
   Layers,
@@ -19,6 +21,7 @@ import { formatBytes, plural, cn } from '../../lib/format';
 import { displayName, isMergeable, isMergeReady, mergeSourceId, pageTurn, TYPE_LABEL } from '../../processing';
 import { extensionOf } from '../../formats';
 import { Button } from '../ui/button';
+import { mergePage } from '../../lib/api';
 
 interface MergeDialogProps {
   open: boolean;
@@ -141,7 +144,8 @@ const PageTile: React.FC<{
   thumb?: string;
   turn: number;
   onRotate: () => void;
-}> = ({ n, name, width, height, thumb, turn, onRotate }) => (
+  onOpen: () => void;
+}> = ({ n, name, width, height, thumb, turn, onRotate, onOpen }) => (
   <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-800">
     {thumb ? (
       <img
@@ -163,6 +167,13 @@ const PageTile: React.FC<{
     )}
     <button
       type="button"
+      aria-label={`Show page ${n} of ${name} larger`}
+      title="Show this page larger"
+      onClick={onOpen}
+      className="absolute inset-0 cursor-zoom-in rounded-lg focus-ring"
+    />
+    <button
+      type="button"
       aria-label={`Rotate page ${n} of ${name}`}
       title="Turn this page 90°"
       onClick={onRotate}
@@ -178,14 +189,17 @@ const PageGrid: React.FC<{
   files: FileItem[];
   merge: MergeState;
   onRotatePage: (fileId: string, page: number) => void;
-}> = ({ files, merge, onRotatePage }) => {
+  onOpenPage: (fileId: string, page: number) => void;
+}> = ({ files, merge, onRotatePage, onOpenPage }) => {
   const total = files.reduce((sum, f) => sum + (previewOf(merge, f)?.pageCount ?? 0), 0);
   return (
     <div className="mt-5">
       <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
         Pages{total > 0 ? ` (${total})` : ''}
       </p>
-      <p className="mt-0.5 text-xs text-zinc-400">Turn a page that lies the wrong way with its rotate button.</p>
+      <p className="mt-0.5 text-xs text-zinc-400">
+        Turn a page that lies the wrong way with its rotate button. Tap a page to see it larger.
+      </p>
       <div className="mt-2 space-y-3">
         {files.map((file) => {
           const preview = previewOf(merge, file);
@@ -213,6 +227,7 @@ const PageGrid: React.FC<{
                         thumb={page.thumb}
                         turn={pageTurn(merge, file.id, p)}
                         onRotate={() => onRotatePage(file.id, p)}
+                        onOpen={() => onOpenPage(file.id, p)}
                       />
                     ))}
                   </div>
@@ -231,6 +246,133 @@ const PageGrid: React.FC<{
   );
 };
 
+/** Fits a page, turned, into the space it has: CSS sizes the box before turning it. */
+const useFit = (width: number, height: number, turn: number) => {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const [box, setBox] = React.useState({ w: 0, h: 0 });
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) =>
+      setBox({ w: entry.contentRect.width, h: entry.contentRect.height })
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  const sideways = turn % 180 !== 0;
+  const scale = Math.min(box.w / (sideways ? height : width), box.h / (sideways ? width : height)) || 0;
+  return { ref, size: { width: width * scale, height: height * scale } };
+};
+
+interface PageRef {
+  file: FileItem;
+  page: number;
+}
+
+/**
+ * One page large, over the dialog: drawn by the server at a readable size
+ * (the thumbnail stands in until it arrives), with its own rotate button and
+ * the arrows (or arrow keys) stepping through every page in merge order.
+ */
+const LargePage: React.FC<{
+  merge: MergeState;
+  pages: PageRef[];
+  at: number;
+  onGo: (at: number) => void;
+  onRotate: (ref: PageRef) => void;
+  onClose: () => void;
+}> = ({ merge, pages, at, onGo, onRotate, onClose }) => {
+  const current = pages[at];
+  const { file, page } = current;
+  const sourceId = mergeSourceId(file) ?? '';
+  const preview = merge.previews[sourceId];
+  const info = preview?.pages?.[page];
+  const turn = pageTurn(merge, file.id, page);
+  const name = displayName(file);
+  const [large, setLarge] = React.useState<Record<string, string>>({});
+  const [failed, setFailed] = React.useState<Record<string, boolean>>({});
+  const key = `${sourceId}#${page}`;
+  const { ref, size } = useFit(info?.width ?? 1, info?.height ?? 1, turn);
+
+  React.useEffect(() => {
+    if (!sourceId || large[key] || failed[key]) return;
+    mergePage(sourceId, page + 1).then(
+      (image) => setLarge((l) => ({ ...l, [key]: image })),
+      () => setFailed((f) => ({ ...f, [key]: true }))
+    );
+  }, [sourceId, page, key, large, failed]);
+
+  const panel = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => panel.current?.focus(), []);
+  const src = large[key] ?? info?.thumb;
+
+  return (
+    <div
+      ref={panel}
+      tabIndex={-1}
+      role="region"
+      aria-label={`${name}, page ${page + 1} of ${preview?.pageCount ?? '?'}`}
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowLeft' && at > 0) onGo(at - 1);
+        if (e.key === 'ArrowRight' && at < pages.length - 1) onGo(at + 1);
+      }}
+      className="absolute inset-0 z-10 flex flex-col bg-white outline-none dark:bg-zinc-900"
+    >
+      <div className="flex items-center justify-between gap-3 px-5 pt-4">
+        <Button variant="ghost" size="sm" onClick={onClose} aria-label="Back to all pages">
+          <ChevronLeft className="h-3.5 w-3.5" />
+          All pages
+        </Button>
+        <p className="min-w-0 truncate text-[13px] text-zinc-600 dark:text-zinc-300">
+          <span className="font-medium text-zinc-900 dark:text-zinc-50">{name}</span> · page {page + 1} of{' '}
+          {preview?.pageCount}
+          {turn > 0 && <span className="tnum ml-1.5 rounded bg-zinc-900/80 px-1 text-[11px] text-white">{turn}°</span>}
+        </p>
+      </div>
+      <div ref={ref} className="relative m-4 flex min-h-0 flex-1 items-center justify-center">
+        {src ? (
+          <img
+            src={src}
+            alt={`Page ${page + 1} of ${name}, large`}
+            style={{ width: size.width, height: size.height, transform: `rotate(${turn}deg)` }}
+            className={cn(
+              'bg-white shadow-md ring-1 ring-zinc-900/10 transition-transform',
+              !large[key] && 'blur-[1px]'
+            )}
+          />
+        ) : (
+          <p className="text-sm text-zinc-400">No picture of this page.</p>
+        )}
+        {!large[key] && !failed[key] && src && (
+          <p className="absolute bottom-0 rounded-md bg-white/90 px-2 py-1 text-xs text-zinc-500 dark:bg-zinc-900/90">
+            Loading a sharper picture…
+          </p>
+        )}
+      </div>
+      <div className="flex items-center justify-between gap-2 border-t border-zinc-100 px-5 py-3 dark:border-zinc-800">
+        <Button variant="secondary" size="sm" disabled={at === 0} onClick={() => onGo(at - 1)} aria-label="Previous page">
+          <ChevronLeft className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Previous</span>
+        </Button>
+        <Button variant="secondary" size="sm" onClick={() => onRotate(current)} aria-label="Rotate this page">
+          <RotateCw className="h-3.5 w-3.5" />
+          Rotate 90°
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={at === pages.length - 1}
+          onClick={() => onGo(at + 1)}
+          aria-label="Next page"
+        >
+          <span className="hidden sm:inline">Next</span>
+          <ChevronRight className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div>
+  );
+};
+
 const MergeDialog: React.FC<MergeDialogProps> = ({ open, onOpenChange, files, merge, onChange, onRun, onDownload, onShare }) => {
   const byId = new Map(files.map((f) => [f.id, f]));
   const included = merge.order.map((id) => byId.get(id)).filter((f): f is FileItem => !!f);
@@ -242,6 +384,15 @@ const MergeDialog: React.FC<MergeDialogProps> = ({ open, onOpenChange, files, me
 
   const exclude = (id: string) =>
     onChange({ order: merge.order.filter((x) => x !== id), excluded: [...merge.excluded, id] });
+  // Every previewed page in merge order (as many as the grid shows), for
+  // stepping through them large.
+  const pageRefs: PageRef[] = included.flatMap((file) => {
+    const count = Math.min(previewOf(merge, file)?.pages?.length ?? 0, TILES);
+    return Array.from({ length: count }, (_, page) => ({ file, page }));
+  });
+  const [zoom, setZoom] = React.useState<{ fileId: string; page: number } | null>(null);
+  const zoomAt = zoom ? pageRefs.findIndex((r) => r.file.id === zoom.fileId && r.page === zoom.page) : -1;
+
   const rotatePage = (id: string, page: number) => {
     const own = merge.pageRotation[id] ?? {};
     onChange({ pageRotation: { ...merge.pageRotation, [id]: { ...own, [page]: ((own[page] ?? 0) + 90) % 360 } } });
@@ -255,6 +406,13 @@ const MergeDialog: React.FC<MergeDialogProps> = ({ open, onOpenChange, files, me
         <Dialog.Overlay className="fixed inset-0 z-40 bg-zinc-950/40 backdrop-blur-sm data-[state=open]:animate-fade-in" />
         <Dialog.Content
           aria-describedby="merge-desc"
+          onEscapeKeyDown={(e) => {
+            // Esc leaves the large page first, not the whole dialog.
+            if (zoomAt >= 0) {
+              e.preventDefault();
+              setZoom(null);
+            }
+          }}
           className="fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100vh-2rem)] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-2xl outline-none data-[state=open]:animate-pop-in dark:border-zinc-800 dark:bg-zinc-900"
         >
           <div className="flex items-start justify-between gap-4 px-5 pt-5">
@@ -308,7 +466,14 @@ const MergeDialog: React.FC<MergeDialogProps> = ({ open, onOpenChange, files, me
               </p>
             )}
 
-            {included.length > 0 && <PageGrid files={included} merge={merge} onRotatePage={rotatePage} />}
+            {included.length > 0 && (
+              <PageGrid
+                files={included}
+                merge={merge}
+                onRotatePage={rotatePage}
+                onOpenPage={(fileId, page) => setZoom({ fileId, page })}
+              />
+            )}
 
             {leftOut.length > 0 && (
               <div className="mt-4">
@@ -435,6 +600,16 @@ const MergeDialog: React.FC<MergeDialogProps> = ({ open, onOpenChange, files, me
               </div>
             </div>
           </div>
+          {zoomAt >= 0 && (
+            <LargePage
+              merge={merge}
+              pages={pageRefs}
+              at={zoomAt}
+              onGo={(at) => setZoom({ fileId: pageRefs[at].file.id, page: pageRefs[at].page })}
+              onRotate={(ref) => rotatePage(ref.file.id, ref.page)}
+              onClose={() => setZoom(null)}
+            />
+          )}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

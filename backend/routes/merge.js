@@ -17,6 +17,8 @@ const TURNS = [0, 90, 180, 270];
 // the file. The longer side of the file's largest page is drawn this wide.
 const PREVIEW_PAGES = 200;
 const THUMB_PX = 160;
+// One page shown large (tapped in the grid): its longer side, as a JPEG.
+const LARGE_PX = 1200;
 
 const isTurn = (r) => TURNS.includes(r);
 // A whole-file turn, or one per page (checked against the page count later).
@@ -99,12 +101,31 @@ const buildPreview = async (id) => {
 };
 
 // One build per source at a time: opening the dialog twice must not start a
-// second LibreOffice run for the same document.
+// second LibreOffice run for the same document. Large pages likewise, per page.
 const building = new Map();
-const preview = (id) => {
-  if (!building.has(id)) building.set(id, buildPreview(id).finally(() => building.delete(id)));
-  return building.get(id);
+const once = (key, build) => {
+  if (!building.has(key)) building.set(key, build().finally(() => building.delete(key)));
+  return building.get(key);
 };
+const preview = (id) => once(id, () => buildPreview(id));
+
+const largePage = (id, n) => once(`${id}#${n}`, async () => {
+  const { pages, converted } = await preview(id);
+  const dir = previewDir(id);
+  const jpg = path.join(dir, `large-${n}.jpg`);
+  if (!fs.existsSync(jpg)) {
+    const { width, height } = pages[n - 1];
+    const dpi = Math.min(300, Math.max(10, Math.round((LARGE_PX * 72) / Math.max(width, height))));
+    const pdfPath = converted ? path.join(dir, converted) : path.join(TEMP_DIR, id);
+    await run('gs', [
+      '-q', '-dNOPAUSE', '-dBATCH', '-dSAFER', '-sDEVICE=jpeg', '-dJPEGQ=80', `-r${dpi}`,
+      '-dTextAlphaBits=4', '-dGraphicsAlphaBits=4', `-dFirstPage=${n}`, `-dLastPage=${n}`,
+      `-sOutputFile=${jpg}`, pdfPath,
+    ]);
+    if (!fs.existsSync(jpg)) throw new AppError(`Couldn't draw page ${n}`, 500);
+  }
+  return `data:image/jpeg;base64,${fs.readFileSync(jpg).toString('base64')}`;
+});
 
 const failWith = (message, statusCode, failedId) => {
   const err = new AppError(message, statusCode);
@@ -131,6 +152,31 @@ router.post('/pages', async (req, res, next) => {
     const data = { ...(await preview(id)) };
     delete data.converted; // a server-side file name, not the client's business
     res.status(200).json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /merge/page  { id, page }
+ *
+ * One page of a source drawn large (its longer side LARGE_PX, as a JPEG
+ * data: URL), for when the thumbnail is too small to tell. `page` counts
+ * from 1. Cached beside the preview.
+ */
+router.post('/page', async (req, res, next) => {
+  try {
+    const { id, page } = req.body || {};
+    if (!isSafeId(id)) throw new AppError('Invalid file id', 400);
+    if (!PDF_SOURCE_EXTS.includes(path.extname(id).toLowerCase())) {
+      throw new AppError(`${id} cannot be turned into a PDF`, 400);
+    }
+    if (!fs.existsSync(path.join(TEMP_DIR, id))) throw new AppError('File not found', 404);
+    const { pageCount } = await preview(id);
+    if (!Number.isInteger(page) || page < 1 || page > pageCount) {
+      throw new AppError(`page must be a whole number from 1 to ${pageCount}`, 400);
+    }
+    res.status(200).json({ success: true, data: { page, image: await largePage(id, page) } });
   } catch (error) {
     next(error);
   }

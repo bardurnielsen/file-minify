@@ -62,7 +62,8 @@ route to MP4, so the option does not appear.
 dragging. The dialog shows every page as a thumbnail in the order it will come
 out, so a page that lies sideways or upside down stands out: turn it with its own
 rotate button, or a whole file with the one in its row (90° a press; it only sets
-the pages' rotation, so nothing is re-encoded).
+the pages' rotation, so nothing is re-encoded). Tap a page to see it large and step
+through them all with the arrows.
 Images, PDFs and Office documents can all take part; video cannot become
 a PDF and is listed as excluded with the reason. If any one file fails to convert,
 nothing is merged and the response names the file, rather than quietly handing back
@@ -248,6 +249,7 @@ stripping the prefix.
 | `GET` | `/compression/download/:id` | the compressed bytes |
 | `POST` | `/conversion/:id` | `{format}`, plus `quality` for Office → PDF → sizes and formats |
 | `GET` | `/conversion/download/:id` | the converted bytes |
+| `POST` | `/merge/page` | `{id, page}` → `{page, image}`: one page (from 1) drawn large, as a JPEG `data:` URL |
 | `POST` | `/merge/pages` | `{id}` → `{pageCount, pages: [{width, height, thumb}]}`: a merge source's pages as seen, with a small PNG of each (`data:` URL, first 200 pages) |
 | `POST` | `/merge` | `{ids: [...], rotate?: [...]}`, 2–20, merged in the order given; `rotate` turns each file's pages clockwise by 0, 90, 180 or 270, one number per file or a list with one per page → `{id, size, pageCount, fileCount}` |
 | `GET` | `/merge/download/:id` | the merged PDF |
