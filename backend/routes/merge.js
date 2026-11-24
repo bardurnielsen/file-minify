@@ -173,10 +173,11 @@ router.post('/page', async (req, res, next) => {
     }
     if (!fs.existsSync(path.join(TEMP_DIR, id))) throw new AppError('File not found', 404);
     const { pageCount } = await preview(id);
-    if (!Number.isInteger(page) || page < 1 || page > pageCount) {
-      throw new AppError(`page must be a whole number from 1 to ${pageCount}`, 400);
-    }
-    res.status(200).json({ success: true, data: { page, image: await largePage(id, page) } });
+    // The number that names the cached file is picked from the server's own
+    // list of pages, so nothing from the request reaches the path.
+    const n = Array.from({ length: pageCount }, (_, i) => i + 1).find((x) => x === page);
+    if (!n) throw new AppError(`page must be a whole number from 1 to ${pageCount}`, 400);
+    res.status(200).json({ success: true, data: { page: n, image: await largePage(id, n) } });
   } catch (error) {
     next(error);
   }
