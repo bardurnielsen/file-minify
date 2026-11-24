@@ -130,6 +130,21 @@ export interface MergeResult {
   fileCount: number;
 }
 
+export interface PagePreview {
+  /** Points, as a reader sees the page (its own rotation applied). */
+  width: number;
+  height: number;
+  /** A small PNG as a data: URL; absent for pages past the preview limit. */
+  thumb?: string;
+}
+
+export interface SourcePreview {
+  status: 'loading' | 'ready' | 'error';
+  pageCount?: number;
+  pages?: PagePreview[];
+  error?: string;
+}
+
 export interface MergeState {
   status: 'idle' | 'running' | 'done' | 'error';
   /** Local file ids in page order. Mergeable files not listed are left out. */
@@ -138,6 +153,10 @@ export interface MergeState {
   excluded: string[];
   /** Clockwise turn (90, 180 or 270) per local file id; absent means none. */
   rotation: Record<string, number>;
+  /** Extra turn per page (0-based), per local file id, on top of `rotation`. */
+  pageRotation: Record<string, Record<number, number>>;
+  /** Page previews, per server id the merge reads (see mergeSourceId). */
+  previews: Record<string, SourcePreview>;
   name: string;
   result?: MergeResult;
   error?: string;

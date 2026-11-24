@@ -1,4 +1,4 @@
-import { DownloadRoute, MissingTool, PhoneAccess, ResultDetails, Route } from '../types';
+import { DownloadRoute, MissingTool, PagePreview, PhoneAccess, ResultDetails, Route } from '../types';
 
 const API = '/api';
 
@@ -112,15 +112,29 @@ export interface MergeResponse {
   fileCount: number;
 }
 
+/** POST /merge/pages: a merge source's page count, sizes and thumbnails. */
+export const mergePages = async (id: string): Promise<{ pageCount: number; pages: PagePreview[] }> => {
+  const response = await fetch(`${API}/merge/pages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok || !json.success) throw new Error(json.error || `No preview (${response.status})`);
+  return json.data;
+};
+
 /**
  * POST /merge with an explicit, ordered list of temp-file ids, and beside it
- * how far to turn each one's pages clockwise (sent only when any turns).
+ * how far to turn each one's pages clockwise: one number for the whole file,
+ * or one per page. Sent only when anything turns.
  */
-export const mergeFiles = async (ids: string[], rotate: number[] = []): Promise<MergeResponse> => {
+export const mergeFiles = async (ids: string[], rotate: (number | number[])[] = []): Promise<MergeResponse> => {
+  const turns = rotate.some((r) => (Array.isArray(r) ? r.some(Boolean) : r));
   const response = await fetch(`${API}/merge`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(rotate.some(Boolean) ? { ids, rotate } : { ids }),
+    body: JSON.stringify(turns ? { ids, rotate } : { ids }),
   });
   const raw = await response.text();
   let json: { success?: boolean; error?: string; failedId?: string; data?: MergeResponse } = {};

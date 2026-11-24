@@ -134,6 +134,32 @@ test('rotating a file in the merge turns its pages, and only its own', async ({ 
   await expect(dialog.getByText(/\d+ pages? from 2 files/)).toBeVisible({ timeout: 90_000 });
 });
 
+test('the merge shows every page, and a single page can be turned', async ({ page }) => {
+  await open(page);
+  await drop(page, [FILES.png, FILES.pdf]);
+  for (const name of ['fx.png', 'fx.pdf']) await finished(row(page, name));
+  await page.getByRole('button', { name: 'Merge to PDF' }).click();
+  const dialog = page.getByRole('dialog');
+
+  // The server draws the thumbnails: fx.pdf has two pages, the picture one.
+  const pdfPages = dialog.getByRole('group', { name: 'Pages of fx.pdf' });
+  await expect(pdfPages.getByRole('img')).toHaveCount(2, { timeout: 60_000 });
+  await expect(dialog.getByRole('group', { name: 'Pages of fx.png' }).getByRole('img')).toHaveCount(1, { timeout: 60_000 });
+  for (const img of await pdfPages.getByRole('img').all()) {
+    await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0);
+  }
+  await expect(dialog.getByRole('listitem').filter({ hasText: 'fx.pdf' })).toContainText('2 pages');
+  await expect(dialog.getByText('Pages (3)')).toBeVisible();
+
+  // Only page 2 of the PDF turns; the server gets one turn per page for it.
+  await pdfPages.getByRole('button', { name: 'Rotate page 2 of fx.pdf' }).click();
+  await expect(pdfPages.getByText('90°')).toHaveCount(1);
+  const request = page.waitForRequest((r) => r.url().endsWith('/api/merge') && r.method() === 'POST');
+  await dialog.getByRole('button', { name: /^Merge 2 files$/ }).click();
+  expect((await request).postDataJSON().rotate).toEqual([0, [0, 90]]);
+  await expect(dialog.getByText(/3 pages from 2 files/)).toBeVisible({ timeout: 90_000 });
+});
+
 test("the drop zone shows the server's upload limit", async ({ page, request }) => {
   const config = await (await request.get('/api/config')).json();
   const mb = Math.round(config.maxFileBytes / 1024 / 1024);

@@ -73,8 +73,9 @@ which Radix's `asChild` passes a ref through); don't reach for `forwardRef`.
 - `routes/compression.js` — Sharp (images), Ghostscript (PDF), FFmpeg (video).
 - `routes/conversion.js` — between formats, using the shared converters.
 - `routes/merge.js` — ordered merge into one PDF via pdf-lib, with an
-  optional per-file clockwise turn (`rotate`, beside `ids`) added to each
-  page's existing /Rotate.
+  optional clockwise turn per file or per page (`rotate`, beside `ids`)
+  added to each page's existing /Rotate; and `/merge/pages`, the page
+  previews the merge dialog shows.
 - `utils/converters.js` — `toPdf` plus `PDF_SOURCE_EXTS`, shared by conversion and
   merge, and the LibreOffice lock.
 - `utils/run.js` — every external command goes through `run(name, args)`, which
@@ -496,12 +497,26 @@ pinned exactly. This is the contract the pieces are built against:
   `failedId` naming it. The UI offers leaving it out.
 - **Merge uses the processed output** (`processedId ?? serverId`), so a converted
   docx is not pushed through LibreOffice twice.
-- **Merge rotation is per file and lossless.** `merge.rotation` is keyed by the
-  local file id, so a turn follows the file through reordering and is dropped
-  when the file is removed; `rotate` is sent only when something turns. The
-  backend adds the turn to the page's own /Rotate (normalised to 0-359)
-  rather than re-rendering. smoke.sh finds /Rotate inside pdf-lib's
-  compressed object streams with Python, and skips that one check without it.
+- **Merge rotation is lossless, per file and per page.** `merge.rotation` (the
+  file's turn) and `merge.pageRotation` (each page's extra turn) are keyed by
+  the local file id, so turns follow the file through reordering and go when
+  it is removed. `rotateFor` sends one number per file until a single page
+  has its own turn, then a list with one per page; `rotate` is left out when
+  nothing turns. The backend adds the turn to the page's own /Rotate
+  (normalised to 0-359) rather than re-rendering. smoke.sh finds /Rotate
+  inside pdf-lib's compressed object streams with Python, and skips those
+  checks without it.
+- **Merge previews come from the server, one request per file.** POST
+  `/merge/pages` turns the source into a PDF (as the merge would), draws up to
+  200 pages with Ghostscript (the largest page's longer side 160 px, its own
+  /Rotate applied) and returns them as `data:` URLs, so a 50-page file is not
+  50 requests against the rate limiter, and phones need no PDF renderer. It is
+  cached in `temp/preview-<id>/` (pages.json plus, for a Word file or image,
+  the PDF it became, which the merge then reuses instead of a second
+  LibreOffice run). Deleting the upload removes it; the hourly clean-up
+  sweeps the rest. The app asks for one source at a time, in page order, only
+  while the dialog is open, keyed by `mergeSourceId`, so a re-processed file
+  is previewed afresh.
 - **A foreign `Origin` is rejected with a 403**, not just denied CORS headers. A
   multipart POST is a "simple" request: the browser sends it regardless and only
   hides the reply, so CORS alone still let a hostile page upload a file and start
