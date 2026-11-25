@@ -21,8 +21,7 @@ import { formatBytes, plural, cn } from '../../lib/format';
 import { displayName, isMergeable, isMergeReady, mergeSourceId, pageTurn, TYPE_LABEL } from '../../processing';
 import { extensionOf } from '../../formats';
 import { Button } from '../ui/button';
-import { largePage } from '../../lib/pageImages';
-import PageTile from './PageTile';
+import { mergePage } from '../../lib/api';
 
 interface MergeDialogProps {
   open: boolean;
@@ -34,8 +33,6 @@ interface MergeDialogProps {
   onDownload: () => void;
   /** Present only where this browser can share the merged PDF. */
   onShare?: () => void;
-  /** Open straight on this page, large (a page tapped in the main list). */
-  focus?: { fileId: string; page: number; at: number };
 }
 
 /** What the download will actually be called. */
@@ -138,6 +135,59 @@ const OrderRow: React.FC<{
 
 /** Tiles shown per file; any further pages turn with the file's own button. */
 const TILES = 200;
+
+const PageTile: React.FC<{
+  n: number;
+  name: string;
+  caption: string;
+  width: number;
+  height: number;
+  thumb?: string;
+  turn: number;
+  onRotate: () => void;
+  onOpen: () => void;
+}> = ({ n, name, caption, width, height, thumb, turn, onRotate, onOpen }) => (
+  <div className="min-w-0">
+    <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-800">
+      {thumb ? (
+        <img
+          src={thumb}
+          alt={`Page ${n} of ${name}`}
+          style={{ transform: `rotate(${turn}deg)` }}
+          className="max-h-[80%] max-w-[80%] bg-white shadow-sm ring-1 ring-zinc-900/10 transition-transform"
+        />
+      ) : (
+        <div
+          aria-label={`Page ${n} of ${name}`}
+          style={{ aspectRatio: `${width} / ${height}`, transform: `rotate(${turn}deg)` }}
+          className="max-h-[80%] max-w-[80%] bg-white shadow-sm ring-1 ring-zinc-900/10 transition-transform"
+        />
+      )}
+      {turn > 0 && (
+        <span className="tnum absolute left-1 top-1 rounded bg-zinc-900/80 px-1 text-[10px] font-medium text-white">{turn}°</span>
+      )}
+      <button
+        type="button"
+        aria-label={`Show page ${n} of ${name} larger`}
+        title="Show this page larger"
+        onClick={onOpen}
+        className="absolute inset-0 cursor-zoom-in rounded-lg focus-ring"
+      />
+      <button
+        type="button"
+        aria-label={`Rotate page ${n} of ${name}`}
+        title="Turn this page 90°"
+        onClick={onRotate}
+        className="absolute bottom-1 right-1 rounded-md bg-white/90 p-1.5 text-zinc-600 shadow-sm ring-1 ring-zinc-900/10 hover:text-zinc-900 focus-ring dark:bg-zinc-900/90 dark:text-zinc-300 dark:hover:text-zinc-50"
+      >
+        <RotateCw className="h-3.5 w-3.5" />
+      </button>
+    </div>
+    <p className="mt-1 truncate text-[11px] text-zinc-500 dark:text-zinc-400" title={caption}>
+      {caption}
+    </p>
+  </div>
+);
 
 /** A tile for a file whose pages are not (or cannot be) shown. */
 const PendingTile: React.FC<{ name: string; text: string; title?: string }> = ({ name, text, title }) => (
@@ -257,7 +307,7 @@ const LargePage: React.FC<{
 
   React.useEffect(() => {
     if (!sourceId || large[key] || failed[key]) return;
-    largePage(sourceId, page + 1).then(
+    mergePage(sourceId, page + 1).then(
       (image) => setLarge((l) => ({ ...l, [key]: image })),
       () => setFailed((f) => ({ ...f, [key]: true }))
     );
@@ -334,17 +384,7 @@ const LargePage: React.FC<{
   );
 };
 
-const MergeDialog: React.FC<MergeDialogProps> = ({
-  open,
-  onOpenChange,
-  files,
-  merge,
-  onChange,
-  onRun,
-  onDownload,
-  onShare,
-  focus,
-}) => {
+const MergeDialog: React.FC<MergeDialogProps> = ({ open, onOpenChange, files, merge, onChange, onRun, onDownload, onShare }) => {
   const byId = new Map(files.map((f) => [f.id, f]));
   const included = merge.order.map((id) => byId.get(id)).filter((f): f is FileItem => !!f);
   const leftOut = files.filter((f) => isMergeable(f) && !merge.order.includes(f.id));
@@ -374,16 +414,6 @@ const MergeDialog: React.FC<MergeDialogProps> = ({
   });
   const [zoom, setZoom] = React.useState<{ fileId: string; page: number } | null>(null);
   const zoomAt = zoom ? pageRefs.findIndex((r) => r.file.id === zoom.fileId && r.page === zoom.page) : -1;
-  // A page tapped in the list: open on it. Adjusted while rendering, as React
-  // suggests for state that follows a prop, rather than in an effect.
-  const [seenFocus, setSeenFocus] = React.useState(focus);
-  if (focus !== seenFocus) {
-    setSeenFocus(focus);
-    if (focus) {
-      setStep('pages');
-      setZoom({ fileId: focus.fileId, page: focus.page });
-    }
-  }
 
   const rotatePage = (id: string, page: number) => {
     const own = merge.pageRotation[id] ?? {};

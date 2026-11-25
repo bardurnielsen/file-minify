@@ -189,40 +189,6 @@ test('the merge shows every page, and a single page can be turned', async ({ pag
   await expect(dialog.getByText(/3 pages from 2 files/)).toBeVisible({ timeout: 90_000 });
 });
 
-test('pages can be checked and turned in the list, straight after upload', async ({ page }) => {
-  await open(page);
-  await drop(page, [FILES.png, FILES.pdf]);
-  for (const name of ['fx.png', 'fx.pdf']) await finished(row(page, name));
-
-  // Two files to merge: each row shows its pages without opening anything.
-  const strip = row(page, 'fx.pdf').getByRole('group', { name: 'Pages of fx.pdf' });
-  await expect(strip.getByRole('img')).toHaveCount(2, { timeout: 60_000 });
-  await expect(row(page, 'fx.pdf')).toContainText('turns apply when you merge');
-
-  // A mouse resting on a page shows it large beside the pointer.
-  await strip.getByRole('img', { name: 'Page 1 of fx.pdf' }).hover();
-  const enlarged = page.getByRole('img', { name: 'Page 1 of fx.pdf, enlarged' });
-  await expect(enlarged).toBeVisible();
-  await page.mouse.move(0, 0);
-  await expect(enlarged).toBeHidden();
-
-  // Turned here, the merge dialog has it too.
-  await strip.getByRole('button', { name: 'Rotate page 2 of fx.pdf' }).click();
-  await expect(strip.getByText('90°', { exact: true })).toHaveCount(1);
-
-  // Tapping a page opens the dialog on it, large.
-  await strip.getByRole('button', { name: 'Show page 2 of fx.pdf larger' }).click();
-  const dialog = page.getByRole('dialog');
-  const large = dialog.getByRole('region', { name: 'fx.pdf, page 2 of 2' });
-  await expect(large).toContainText('90°');
-  await page.keyboard.press('Escape');
-  await expect(large).toBeHidden();
-  const request = page.waitForRequest((r) => r.url().endsWith('/api/merge') && r.method() === 'POST');
-  await dialog.getByRole('button', { name: /^Merge 2 files$/ }).click();
-  expect((await request).postDataJSON().rotate).toEqual([0, [0, 90]]);
-  await expect(dialog.getByText(/3 pages from 2 files/)).toBeVisible({ timeout: 90_000 });
-});
-
 test("the drop zone shows the server's upload limit", async ({ page, request }) => {
   const config = await (await request.get('/api/config')).json();
   const mb = Math.round(config.maxFileBytes / 1024 / 1024);

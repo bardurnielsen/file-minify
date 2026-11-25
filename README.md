@@ -63,9 +63,7 @@ dragging. The dialog shows every page as a thumbnail in the order it will come
 out, so a page that lies sideways or upside down stands out: turn it with its own
 rotate button, or a whole file with the one in its row (90° a press; it only sets
 the pages' rotation, so nothing is re-encoded). Tap a page to see it large and step
-through them all with the arrows. With two or more such files, each one's pages
-already show under it in the list, so a sideways scan can be turned straight after
-upload (hover over a page to see it larger); the turns apply to the merged PDF.
+through them all with the arrows.
 Images, PDFs and Office documents can all take part; video cannot become
 a PDF and is listed as excluded with the reason. If any one file fails to convert,
 nothing is merged and the response names the file, rather than quietly handing back

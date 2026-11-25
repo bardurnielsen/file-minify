@@ -28,7 +28,6 @@ import { useToast } from '../ui/toaster';
 import { Button } from '../ui/button';
 import { AddMoreStrip, DropHero } from './DropZone';
 import FileRow from './FileRow';
-import PageStrip from './PageStrip';
 import TierControl from './TierControl';
 import MergeDialog, { MergeRow, mergedFileName } from './MergeDialog';
 
@@ -104,29 +103,19 @@ const FileProcessor: React.FC = () => {
   const maxFileBytes = useFiles((s) => s.maxFileBytes);
   const merge = useFiles((s) => s.merge);
   const [mergeOpen, setMergeOpen] = useState(false);
-  const [mergeFocus, setMergeFocus] = useState<{ fileId: string; page: number; at: number }>();
 
-  // Page previews, one source at a time (a Word file means a LibreOffice run
-  // on the server), in page order: for the merge dialog, and for the strips
-  // in the list as soon as there are two files to merge. In the list a file
-  // is previewed once it has finished processing, so it is its result that
-  // is drawn (and a Word file is converted once, not twice). A source whose
+  // Page previews for the merge dialog, one source at a time (a Word file
+  // means a LibreOffice run on the server), in page order. A source whose
   // processed result changes has a new id, so it is previewed afresh.
   const previewing = useRef(false);
   const [previewDone, setPreviewDone] = useState(0);
   useEffect(() => {
-    if (previewing.current) return;
+    if (!mergeOpen || previewing.current) return;
     const { files: current, merge: m } = useFiles.getState();
-    const mergeable = current.filter(isMergeable);
-    if (!mergeOpen && mergeable.length < 2) return;
     const byId = new Map(current.map((f) => [f.id, f]));
-    const settled = (f: FileItem) => mergeOpen || !['queued', 'processing'].includes(f.status);
-    const next = [...m.order, ...mergeable.map((f) => f.id).filter((id) => !m.order.includes(id))]
+    const next = m.order
       .map((id) => byId.get(id))
-      .find(
-        (f): f is FileItem =>
-          !!f && isMergeable(f) && isMergeReady(f) && settled(f) && !m.previews[mergeSourceId(f)!]
-      );
+      .find((f): f is FileItem => !!f && isMergeReady(f) && !m.previews[mergeSourceId(f)!]);
     if (!next) return;
     const sourceId = mergeSourceId(next)!;
     const store = (p: SourcePreview) =>
@@ -405,21 +394,6 @@ const FileProcessor: React.FC = () => {
     setMergeOpen(true);
   };
 
-  // A page turned or tapped in the list's strips: the same turns the merge
-  // dialog shows, and the same out-of-date marking after a merge.
-  const turnPage = (fileId: string, page: number) =>
-    useFiles.getState().setMerge((m) => {
-      const own = m.pageRotation[fileId] ?? {};
-      return {
-        pageRotation: { ...m.pageRotation, [fileId]: { ...own, [page]: ((own[page] ?? 0) + 90) % 360 } },
-        ...(m.status === 'done' ? { stale: true } : {}),
-      };
-    });
-  const openPage = (fileId: string, page: number) => {
-    openMerge();
-    setMergeFocus({ fileId, page, at: Date.now() });
-  };
-
   const runMerge = async () => {
     const { files: current, merge: m, setMerge } = useFiles.getState();
     const byId = new Map(current.map((f) => [f.id, f]));
@@ -656,15 +630,6 @@ const FileProcessor: React.FC = () => {
                     onRerun={(options) => rerun(file.id, options)}
                     onStart={(options) => start(file.id, options)}
                     onRename={(baseName) => update(file.id, { baseName: baseName || undefined })}
-                    pages={
-                      summary.mergeable >= 2 && isMergeable(file) ? (
-                        <PageStrip
-                          file={file}
-                          onRotatePage={(p) => turnPage(file.id, p)}
-                          onOpenPage={(p) => openPage(file.id, p)}
-                        />
-                      ) : undefined
-                    }
                   />
                 ))}
               </AnimatePresence>
@@ -701,7 +666,6 @@ const FileProcessor: React.FC = () => {
 
       <MergeDialog
         open={mergeOpen}
-        focus={mergeFocus}
         onOpenChange={setMergeOpen}
         files={files}
         merge={merge}

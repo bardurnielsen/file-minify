@@ -521,13 +521,6 @@ pinned exactly. This is the contract the pieces are built against:
   under a long file list. Changing the order, the files or a turn after a
   merge sets `merge.stale`: the old result stays downloadable but is marked
   out of date in the dialog and on the main screen until Merge again.
-  With two or more mergeable files, each row in the list also shows its
-  pages (`PageStrip`, the same `PageTile` and turns as the dialog); there a
-  file is previewed only once it has finished processing, so its result is
-  drawn. Resting a mouse on a page shows it large beside the pointer
-  (`HoverBox`, a portal; no hover on touch), and tapping one opens the
-  dialog on it (`focus`). Turns only ever apply to the merge, and the strip
-  says so: a single file's own download is not turned.
   Tapping a tile asks `/merge/page` for that one page at
   1200 px (JPEG, cached as `large-<n>.jpg` beside the preview); the large view
   sits over the dialog, its arrows step through every previewed page in merge
