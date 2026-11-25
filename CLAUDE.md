@@ -141,7 +141,8 @@ What nginx did and native mode now does itself:
   (microsoft/winget-pkgs#441409, manual review, took weeks). 2.0.2 (#485920,
   from the fork `bardurnielsen/winget-pkgs`, installer type `inno` ->
   `nullsoft`) was merged 80 minutes after submitting, on 2026-11-21. The CLA
-  is per account and already signed. For a new version: copy the last folder in
+  is per account and already signed. 2.0.3 (page thumbnails and rotation in
+  the merge) went in as #489357 on 2026-11-25. For a new version: copy the last folder in
   `packaging/winget/BardurNielsen.FileMinify/`, change the version, URL,
   SHA-256 (from the `release` job or GitHub's asset digest) and
   ReleaseNotesUrl, check it with `winget validate --manifest <folder>` on
