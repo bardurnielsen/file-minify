@@ -41,6 +41,8 @@ interface FileRowProps {
   onStart: (options: ProcessingOption) => void;
   /** A new name without extension; empty goes back to the original. */
   onRename: (baseName: string) => void;
+  /** The file's pages for a merge (PageStrip), shown under the row. */
+  pages?: React.ReactNode;
 }
 
 const TYPE_ICON: Record<FileType, React.ComponentType<{ className?: string }>> = {
@@ -183,7 +185,7 @@ const NameEditor: React.FC<{ file: FileItem; onRename: (baseName: string) => voi
   );
 };
 
-const FileRow: React.FC<FileRowProps> = ({ file, onDownload, onShare, onRemove, onRerun, onStart, onRename }) => {
+const FileRow: React.FC<FileRowProps> = ({ file, onDownload, onShare, onRemove, onRerun, onStart, onRename, pages }) => {
   const [adjusting, setAdjusting] = useState(false);
   const busy = file.status === 'uploading' || file.status === 'queued' || file.status === 'processing';
   const elapsed = useElapsedSeconds(file.startedAt, file.status === 'processing');
@@ -443,6 +445,8 @@ const FileRow: React.FC<FileRowProps> = ({ file, onDownload, onShare, onRemove, 
           </Button>
         </div>
       </div>
+
+      {pages}
 
       <AnimatePresence initial={false}>
         {showPanel && (
