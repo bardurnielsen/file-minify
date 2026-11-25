@@ -60,7 +60,7 @@ const Thumb: React.FC<{ file: FileItem; src?: string; turn: number }> = ({ file,
       src={src}
       alt=""
       style={{ transform: `rotate(${turn}deg)` }}
-      className="h-9 w-9 shrink-0 rounded-lg object-cover ring-1 ring-inset ring-zinc-900/5 transition-transform"
+      className="h-9 w-9 shrink-0 rounded-lg bg-white object-contain ring-1 ring-inset ring-zinc-900/5 transition-transform"
     />
   ) : (
     <div
@@ -139,112 +139,123 @@ const TILES = 200;
 const PageTile: React.FC<{
   n: number;
   name: string;
+  caption: string;
   width: number;
   height: number;
   thumb?: string;
   turn: number;
   onRotate: () => void;
   onOpen: () => void;
-}> = ({ n, name, width, height, thumb, turn, onRotate, onOpen }) => (
-  <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-800">
-    {thumb ? (
-      <img
-        src={thumb}
-        alt={`Page ${n}`}
-        style={{ transform: `rotate(${turn}deg)` }}
-        className="max-h-[80%] max-w-[80%] bg-white shadow-sm ring-1 ring-zinc-900/10 transition-transform"
+}> = ({ n, name, caption, width, height, thumb, turn, onRotate, onOpen }) => (
+  <div className="min-w-0">
+    <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-800">
+      {thumb ? (
+        <img
+          src={thumb}
+          alt={`Page ${n} of ${name}`}
+          style={{ transform: `rotate(${turn}deg)` }}
+          className="max-h-[80%] max-w-[80%] bg-white shadow-sm ring-1 ring-zinc-900/10 transition-transform"
+        />
+      ) : (
+        <div
+          aria-label={`Page ${n} of ${name}`}
+          style={{ aspectRatio: `${width} / ${height}`, transform: `rotate(${turn}deg)` }}
+          className="max-h-[80%] max-w-[80%] bg-white shadow-sm ring-1 ring-zinc-900/10 transition-transform"
+        />
+      )}
+      {turn > 0 && (
+        <span className="tnum absolute left-1 top-1 rounded bg-zinc-900/80 px-1 text-[10px] font-medium text-white">{turn}°</span>
+      )}
+      <button
+        type="button"
+        aria-label={`Show page ${n} of ${name} larger`}
+        title="Show this page larger"
+        onClick={onOpen}
+        className="absolute inset-0 cursor-zoom-in rounded-lg focus-ring"
       />
-    ) : (
-      <div
-        aria-label={`Page ${n}`}
-        style={{ aspectRatio: `${width} / ${height}`, transform: `rotate(${turn}deg)` }}
-        className="max-h-[80%] max-w-[80%] bg-white shadow-sm ring-1 ring-zinc-900/10 transition-transform"
-      />
-    )}
-    <span className="tnum absolute bottom-1 left-1.5 text-[10px] font-medium text-zinc-500 dark:text-zinc-400">{n}</span>
-    {turn > 0 && (
-      <span className="tnum absolute left-1 top-1 rounded bg-zinc-900/80 px-1 text-[10px] font-medium text-white">{turn}°</span>
-    )}
-    <button
-      type="button"
-      aria-label={`Show page ${n} of ${name} larger`}
-      title="Show this page larger"
-      onClick={onOpen}
-      className="absolute inset-0 cursor-zoom-in rounded-lg focus-ring"
-    />
-    <button
-      type="button"
-      aria-label={`Rotate page ${n} of ${name}`}
-      title="Turn this page 90°"
-      onClick={onRotate}
-      className="absolute bottom-0.5 right-0.5 rounded-md bg-white/90 p-1 text-zinc-600 shadow-sm ring-1 ring-zinc-900/10 hover:text-zinc-900 focus-ring dark:bg-zinc-900/90 dark:text-zinc-300 dark:hover:text-zinc-50"
-    >
-      <RotateCw className="h-3 w-3" />
-    </button>
+      <button
+        type="button"
+        aria-label={`Rotate page ${n} of ${name}`}
+        title="Turn this page 90°"
+        onClick={onRotate}
+        className="absolute bottom-1 right-1 rounded-md bg-white/90 p-1.5 text-zinc-600 shadow-sm ring-1 ring-zinc-900/10 hover:text-zinc-900 focus-ring dark:bg-zinc-900/90 dark:text-zinc-300 dark:hover:text-zinc-50"
+      >
+        <RotateCw className="h-3.5 w-3.5" />
+      </button>
+    </div>
+    <p className="mt-1 truncate text-[11px] text-zinc-500 dark:text-zinc-400" title={caption}>
+      {caption}
+    </p>
   </div>
 );
 
-/** Every page in merge order, under its file's name, as it will come out. */
+/** A tile for a file whose pages are not (or cannot be) shown. */
+const PendingTile: React.FC<{ name: string; text: string; title?: string }> = ({ name, text, title }) => (
+  <div className="min-w-0" title={title}>
+    <div className="flex aspect-square items-center justify-center rounded-lg border border-dashed border-zinc-200 px-2 text-center text-[11px] text-zinc-400 dark:border-zinc-700">
+      {text}
+    </div>
+    <p className="mt-1 truncate text-[11px] text-zinc-500 dark:text-zinc-400">{name}</p>
+  </div>
+);
+
+/** Every page in merge order, as it will come out, its file named under it. */
 const PageGrid: React.FC<{
   files: FileItem[];
   merge: MergeState;
   onRotatePage: (fileId: string, page: number) => void;
   onOpenPage: (fileId: string, page: number) => void;
-}> = ({ files, merge, onRotatePage, onOpenPage }) => {
-  const total = files.reduce((sum, f) => sum + (previewOf(merge, f)?.pageCount ?? 0), 0);
-  return (
-    <div className="mt-5">
-      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-        Pages{total > 0 ? ` (${total})` : ''}
-      </p>
-      <p className="mt-0.5 text-xs text-zinc-400">
-        Turn a page that lies the wrong way with its rotate button. Tap a page to see it larger.
-      </p>
-      <div className="mt-2 space-y-3">
-        {files.map((file) => {
-          const preview = previewOf(merge, file);
-          const name = displayName(file);
-          const pages = preview?.pages ?? [];
-          return (
-            <div key={file.id} role="group" aria-label={`Pages of ${name}`}>
-              <p className="truncate text-[13px] font-medium text-zinc-700 dark:text-zinc-200">{name}</p>
-              {!preview || preview.status === 'loading' ? (
-                <p className="mt-1 text-xs text-zinc-400">Preparing pages…</p>
-              ) : preview.status === 'error' ? (
-                <p className="mt-1 text-xs text-zinc-400">
-                  No preview ({preview.error}). It can still be merged, and its rotate button turns every page.
-                </p>
-              ) : (
-                <>
-                  <div className="mt-1.5 grid grid-cols-4 gap-2 sm:grid-cols-6">
-                    {pages.slice(0, TILES).map((page, p) => (
-                      <PageTile
-                        key={p}
-                        n={p + 1}
-                        name={name}
-                        width={page.width}
-                        height={page.height}
-                        thumb={page.thumb}
-                        turn={pageTurn(merge, file.id, p)}
-                        onRotate={() => onRotatePage(file.id, p)}
-                        onOpen={() => onOpenPage(file.id, p)}
-                      />
-                    ))}
-                  </div>
-                  {pages.length > TILES && (
-                    <p className="mt-1 text-xs text-zinc-400">
-                      {plural(pages.length - TILES, 'more page')} not shown; they turn with the file&apos;s rotate button.
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
+}> = ({ files, merge, onRotatePage, onOpenPage }) => (
+  <div>
+    <p className="text-[13px] text-zinc-500 dark:text-zinc-400">
+      Every page as it will come out. Turn one that lies the wrong way with its rotate button, or tap it to see
+      it larger. Only the merged PDF changes; your files stay as they are.
+    </p>
+    <div className="mt-3 grid grid-cols-3 gap-x-2 gap-y-3 sm:grid-cols-5">
+      {files.flatMap((file) => {
+        const preview = previewOf(merge, file);
+        const name = displayName(file);
+        if (!preview || preview.status === 'loading') {
+          return [<PendingTile key={file.id} name={name} text="Preparing pages…" />];
+        }
+        if (preview.status === 'error') {
+          return [
+            <PendingTile
+              key={file.id}
+              name={name}
+              text="No preview. Turn it with the rotate button in its row."
+              title={preview.error}
+            />,
+          ];
+        }
+        const pages = preview.pages ?? [];
+        const tiles = pages.slice(0, TILES).map((page, p) => (
+          <PageTile
+            key={`${file.id}#${p}`}
+            n={p + 1}
+            name={name}
+            caption={pages.length > 1 ? `${name} · ${p + 1}` : name}
+            width={page.width}
+            height={page.height}
+            thumb={page.thumb}
+            turn={pageTurn(merge, file.id, p)}
+            onRotate={() => onRotatePage(file.id, p)}
+            onOpen={() => onOpenPage(file.id, p)}
+          />
+        ));
+        if (pages.length > TILES) {
+          tiles.push(
+            <p key={`${file.id}#more`} className="col-span-full text-xs text-zinc-400">
+              {plural(pages.length - TILES, 'more page')} of {name} not shown; they turn with the rotate button in
+              its row.
+            </p>
           );
-        })}
-      </div>
+        }
+        return tiles;
+      })}
     </div>
-  );
-};
+  </div>
+);
 
 /** Fits a page, turned, into the space it has: CSS sizes the box before turning it. */
 const useFit = (width: number, height: number, turn: number) => {
@@ -382,8 +393,19 @@ const MergeDialog: React.FC<MergeDialogProps> = ({ open, onOpenChange, files, me
   const canRun = included.length >= 2 && allReady && merge.status !== 'running';
   const failedFile = merge.failedFileId ? byId.get(merge.failedFileId) : undefined;
 
+  const [step, setStep] = React.useState<'order' | 'pages'>('order');
+  const totalPages = included.reduce((sum, f) => sum + (previewOf(merge, f)?.pageCount ?? 0), 0);
+
+  // A change to what goes in, or how it turns, leaves a finished merge out of
+  // date: say so rather than offer the old file as if it were the new one.
+  const change = (updates: Partial<MergeState>) =>
+    onChange(
+      merge.status === 'done' && ['order', 'excluded', 'rotation', 'pageRotation'].some((k) => k in updates)
+        ? { ...updates, stale: true }
+        : updates
+    );
   const exclude = (id: string) =>
-    onChange({ order: merge.order.filter((x) => x !== id), excluded: [...merge.excluded, id] });
+    change({ order: merge.order.filter((x) => x !== id), excluded: [...merge.excluded, id] });
   // Every previewed page in merge order (as many as the grid shows), for
   // stepping through them large.
   const pageRefs: PageRef[] = included.flatMap((file) => {
@@ -395,10 +417,10 @@ const MergeDialog: React.FC<MergeDialogProps> = ({ open, onOpenChange, files, me
 
   const rotatePage = (id: string, page: number) => {
     const own = merge.pageRotation[id] ?? {};
-    onChange({ pageRotation: { ...merge.pageRotation, [id]: { ...own, [page]: ((own[page] ?? 0) + 90) % 360 } } });
+    change({ pageRotation: { ...merge.pageRotation, [id]: { ...own, [page]: ((own[page] ?? 0) + 90) % 360 } } });
   };
   const include = (id: string) =>
-    onChange({ order: [...merge.order, id], excluded: merge.excluded.filter((x) => x !== id) });
+    change({ order: [...merge.order, id], excluded: merge.excluded.filter((x) => x !== id) });
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -422,8 +444,7 @@ const MergeDialog: React.FC<MergeDialogProps> = ({ open, onOpenChange, files, me
                 Merge into one PDF
               </Dialog.Title>
               <Dialog.Description id="merge-desc" className="mt-1 text-[13px] text-zinc-500 dark:text-zinc-400">
-                Files follow this order. Drag or use the arrows to change it. Turn a whole
-                file with the rotate button in its row, or single pages below.
+                Put the files in order, check that every page lies the right way, then merge.
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>
@@ -433,12 +454,55 @@ const MergeDialog: React.FC<MergeDialogProps> = ({ open, onOpenChange, files, me
             </Dialog.Close>
           </div>
 
+          <div role="tablist" aria-label="Merge steps" className="mx-5 mt-4 grid grid-cols-2 gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800">
+            {(
+              [
+                ['order', 1, 'Order files'],
+                ['pages', 2, `Check pages${totalPages > 0 ? ` (${totalPages})` : ''}`],
+              ] as const
+            ).map(([key, n, label]) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={step === key}
+                onClick={() => setStep(key)}
+                className={cn(
+                  'flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium focus-ring',
+                  step === key
+                    ? 'bg-white text-zinc-900 shadow-sm dark:bg-zinc-900 dark:text-zinc-50'
+                    : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100'
+                )}
+              >
+                <span className="tnum inline-flex h-4 w-4 items-center justify-center rounded-full bg-zinc-900/10 text-[10px] dark:bg-white/15">
+                  {n}
+                </span>
+                {label}
+              </button>
+            ))}
+          </div>
+
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+            {step === 'pages' ? (
+              included.length > 0 ? (
+                <PageGrid
+                  files={included}
+                  merge={merge}
+                  onRotatePage={rotatePage}
+                  onOpenPage={(fileId, page) => setZoom({ fileId, page })}
+                />
+              ) : (
+                <p className="rounded-xl border border-dashed border-zinc-200 px-4 py-6 text-center text-sm text-zinc-400 dark:border-zinc-700">
+                  Nothing selected. Add files in step 1.
+                </p>
+              )
+            ) : (
+            <>
             {included.length > 0 ? (
               <Reorder.Group
                 axis="y"
                 values={merge.order}
-                onReorder={(order) => onChange({ order })}
+                onReorder={(order) => change({ order })}
                 className="space-y-1.5"
               >
                 {included.map((file, i) => (
@@ -450,9 +514,9 @@ const MergeDialog: React.FC<MergeDialogProps> = ({ open, onOpenChange, files, me
                     failed={merge.status === 'error' && merge.failedFileId === file.id}
                     turn={merge.rotation[file.id] ?? 0}
                     preview={previewOf(merge, file)}
-                    onMove={(to) => onChange({ order: move(merge.order, i, to) })}
+                    onMove={(to) => change({ order: move(merge.order, i, to) })}
                     onRotate={() =>
-                      onChange({
+                      change({
                         rotation: { ...merge.rotation, [file.id]: ((merge.rotation[file.id] ?? 0) + 90) % 360 },
                       })
                     }
@@ -464,15 +528,6 @@ const MergeDialog: React.FC<MergeDialogProps> = ({ open, onOpenChange, files, me
               <p className="rounded-xl border border-dashed border-zinc-200 px-4 py-6 text-center text-sm text-zinc-400 dark:border-zinc-700">
                 Nothing selected. Add files back from the list below.
               </p>
-            )}
-
-            {included.length > 0 && (
-              <PageGrid
-                files={included}
-                merge={merge}
-                onRotatePage={rotatePage}
-                onOpenPage={(fileId, page) => setZoom({ fileId, page })}
-              />
             )}
 
             {leftOut.length > 0 && (
@@ -517,6 +572,8 @@ const MergeDialog: React.FC<MergeDialogProps> = ({ open, onOpenChange, files, me
                 className="mt-1.5 h-9 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 focus-ring dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
               />
             </div>
+            </>
+            )}
           </div>
 
           <div className="border-t border-zinc-100 px-5 py-4 dark:border-zinc-800">
@@ -532,11 +589,30 @@ const MergeDialog: React.FC<MergeDialogProps> = ({ open, onOpenChange, files, me
               </div>
             )}
             {merge.status === 'done' && merge.result && (
-              <div className="mb-3 flex items-center justify-between gap-3 rounded-xl bg-emerald-50 px-3 py-2.5 dark:bg-emerald-950/30">
+              <div
+                className={cn(
+                  'mb-3 flex items-center justify-between gap-3 rounded-xl px-3 py-2.5',
+                  merge.stale ? 'bg-amber-50 dark:bg-amber-950/30' : 'bg-emerald-50 dark:bg-emerald-950/30'
+                )}
+              >
                 <div className="min-w-0 text-[13px]">
-                  <p className="truncate font-medium text-emerald-800 dark:text-emerald-300">{mergedFileName(merge.name)}</p>
-                  <p className="tnum text-emerald-700/80 dark:text-emerald-400/80">
-                    {plural(merge.result.pageCount, 'page')} from {plural(merge.result.fileCount, 'file')} · {formatBytes(merge.result.size)}
+                  <p
+                    className={cn(
+                      'truncate font-medium',
+                      merge.stale ? 'text-amber-800 dark:text-amber-300' : 'text-emerald-800 dark:text-emerald-300'
+                    )}
+                  >
+                    {mergedFileName(merge.name)}
+                  </p>
+                  <p
+                    className={cn(
+                      'tnum',
+                      merge.stale ? 'text-amber-700/90 dark:text-amber-400/90' : 'text-emerald-700/80 dark:text-emerald-400/80'
+                    )}
+                  >
+                    {merge.stale
+                      ? 'Changed since this merge. Press Merge again to include the changes.'
+                      : `${plural(merge.result.pageCount, 'page')} from ${plural(merge.result.fileCount, 'file')} · ${formatBytes(merge.result.size)}`}
                   </p>
                 </div>
                 <div className="flex shrink-0 gap-1.5">
@@ -580,13 +656,20 @@ const MergeDialog: React.FC<MergeDialogProps> = ({ open, onOpenChange, files, me
               </div>
             )}
             <div className="flex items-center justify-between gap-3">
-              <p className="text-xs text-zinc-400">
-                {included.length < 2
-                  ? 'Pick at least two files.'
-                  : !allReady
-                    ? 'Waiting for uploads to finish.'
-                    : `${plural(included.length, 'file')} in this order.`}
-              </p>
+              {canRun && step === 'order' ? (
+                <Button variant="ghost" size="sm" onClick={() => setStep('pages')}>
+                  Check pages
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
+              ) : (
+                <p className="text-xs text-zinc-400">
+                  {included.length < 2
+                    ? 'Pick at least two files.'
+                    : !allReady
+                      ? 'Waiting for uploads to finish.'
+                      : `${plural(included.length, 'file')} in this order.`}
+                </p>
+              )}
               <div className="flex items-center gap-2">
                 <Dialog.Close asChild>
                   <Button variant="ghost" size="sm">
@@ -645,7 +728,10 @@ export const MergeRow: React.FC<{
           <div className="indeterminate relative mt-1.5 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700" />
         </>
       )}
-      {merge.status === 'done' && merge.result && (
+      {merge.status === 'done' && merge.result && merge.stale && (
+        <p className="mt-0.5 text-[13px] text-amber-700 dark:text-amber-400">Out of date - open it to merge again.</p>
+      )}
+      {merge.status === 'done' && merge.result && !merge.stale && (
         <p className="tnum mt-0.5 text-[13px] text-zinc-500 dark:text-zinc-400">
           {plural(merge.result.pageCount, 'page')} from {plural(merge.result.fileCount, 'file')} · {formatBytes(merge.result.size)}
         </p>
@@ -667,7 +753,7 @@ export const MergeRow: React.FC<{
           <span className="hidden sm:inline">Share</span>
         </Button>
       )}
-      <Button variant="ghost" size="icon" aria-label="Edit merge" onClick={onEdit} disabled={merge.status === 'running'}>
+      <Button variant="ghost" size="icon" aria-label="Edit merge" title="Edit the order and pages" onClick={onEdit} disabled={merge.status === 'running'}>
         <Pencil className="h-4 w-4" />
       </Button>
       <Button variant="ghost" size="icon" aria-label="Dismiss merge" onClick={onDismiss} disabled={merge.status === 'running'}>

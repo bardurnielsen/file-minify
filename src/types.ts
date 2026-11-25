@@ -155,6 +155,8 @@ export interface MergeState {
   rotation: Record<string, number>;
   /** Extra turn per page (0-based), per local file id, on top of `rotation`. */
   pageRotation: Record<string, Record<number, number>>;
+  /** Changed since the merge finished: the result no longer matches. */
+  stale?: boolean;
   /** Page previews, per server id the merge reads (see mergeSourceId). */
   previews: Record<string, SourcePreview>;
   name: string;

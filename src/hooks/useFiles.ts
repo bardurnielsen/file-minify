@@ -75,6 +75,7 @@ export const useFiles = create<FileStore>()(
               excluded: state.merge.excluded.filter((x) => x !== id),
               rotation,
               pageRotation,
+              stale: state.merge.stale || (state.merge.status === 'done' && state.merge.order.includes(id)),
             },
           };
         }),

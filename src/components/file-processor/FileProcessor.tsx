@@ -399,7 +399,7 @@ const FileProcessor: React.FC = () => {
     const byId = new Map(current.map((f) => [f.id, f]));
     const sources = m.order.map((id) => byId.get(id)).filter((f): f is FileItem => !!f && isMergeReady(f));
     if (sources.length < 2) return;
-    setMerge({ status: 'running', error: undefined, failedFileId: undefined, result: undefined });
+    setMerge({ status: 'running', error: undefined, failedFileId: undefined, result: undefined, stale: false });
     try {
       const data = await mergeFiles(
         sources.map((f) => mergeSourceId(f)!),
@@ -491,7 +491,7 @@ const FileProcessor: React.FC = () => {
         </h1>
         <p className="mx-auto mt-3 max-w-lg text-[15px] leading-relaxed text-zinc-500 dark:text-zinc-400 app:mt-2 app:[@media(max-height:700px)]:hidden">
           Compress images, video and PDFs, turn Office documents into PDFs, or merge several
-          files into one PDF in the order you choose. Good defaults are chosen for you; every
+          files into one PDF in the order you choose, with every page the right way up. Good defaults are chosen for you; every
           setting is still one click away.
         </p>
       </div>
@@ -577,7 +577,12 @@ const FileProcessor: React.FC = () => {
                   )}
                 </AnimatePresence>
                 {summary.mergeable >= 2 && (
-                  <Button variant="secondary" size="sm" onClick={openMerge}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={openMerge}
+                    title="Put the files in order and check their pages before merging"
+                  >
                     <Layers className="h-3.5 w-3.5" />
                     Merge to PDF
                   </Button>

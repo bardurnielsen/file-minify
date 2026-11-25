@@ -516,7 +516,12 @@ pinned exactly. This is the contract the pieces are built against:
   LibreOffice run). Deleting the upload removes it; the hourly clean-up
   sweeps the rest. The app asks for one source at a time, in page order, only
   while the dialog is open, keyed by `mergeSourceId`, so a re-processed file
-  is previewed afresh. Tapping a tile asks `/merge/page` for that one page at
+  is previewed afresh. The dialog has two steps, "1 Order files" and "2 Check
+  pages" (tabs; Merge works from both), so the page check is not buried
+  under a long file list. Changing the order, the files or a turn after a
+  merge sets `merge.stale`: the old result stays downloadable but is marked
+  out of date in the dialog and on the main screen until Merge again.
+  Tapping a tile asks `/merge/page` for that one page at
   1200 px (JPEG, cached as `large-<n>.jpg` beside the preview); the large view
   sits over the dialog, its arrows step through every previewed page in merge
   order, and Esc leaves it before the dialog (`onEscapeKeyDown`).
