@@ -1,5 +1,5 @@
 import { canBecomePdf, extensionOf, KEEP_ORIGINAL } from './formats';
-import { FileItem, FileResult, FileType, ProcessingOption, ResultDetails, Route, Tier, VideoResolution } from './types';
+import { FileItem, FileResult, FileType, MergeState, ProcessingOption, ResultDetails, Route, Tier, VideoResolution } from './types';
 
 /** Until GET /config answers; the server's MAX_FILE_MB is the real limit. */
 export const MAX_FILE_BYTES = 50 * 1024 * 1024;
@@ -246,6 +246,21 @@ export const isMergeable = (file: FileItem) => canBecomePdf(file.type);
  * compressed PDF merges at its compressed size), otherwise the upload.
  */
 export const mergeSourceId = (file: FileItem) => file.result?.processedId ?? file.serverId;
+
+/** How far one page ends up turned: the file's turn plus the page's own. */
+export const pageTurn = (merge: MergeState, fileId: string, page: number) =>
+  ((merge.rotation[fileId] ?? 0) + (merge.pageRotation[fileId]?.[page] ?? 0)) % 360;
+
+/**
+ * What POST /merge gets for a file: one number while only the whole file
+ * turns, or one per page once a single page has its own turn.
+ */
+export const rotateFor = (merge: MergeState, file: FileItem): number | number[] => {
+  const perPage = merge.pageRotation[file.id];
+  const count = merge.previews[mergeSourceId(file) ?? '']?.pageCount;
+  if (!count || !perPage || !Object.values(perPage).some(Boolean)) return merge.rotation[file.id] ?? 0;
+  return Array.from({ length: count }, (_, p) => pageTurn(merge, file.id, p));
+};
 
 /** Mergeable and already on the server. */
 export const isMergeReady = (file: FileItem) =>

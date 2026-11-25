@@ -3,7 +3,7 @@ import { FileRejection, useDropzone } from 'react-dropzone';
 import { fromEvent } from 'file-selector';
 import { AnimatePresence, HTMLMotionProps, motion } from 'framer-motion';
 import { Download, Layers, RefreshCw, Share2, Trash2 } from 'lucide-react';
-import { DownloadRoute, FileItem, FileType, ProcessingOption, Tier } from '../../types';
+import { DownloadRoute, FileItem, FileType, ProcessingOption, SourcePreview, Tier } from '../../types';
 import { KEEP_ORIGINAL } from '../../formats';
 import {
   ACCEPT,
@@ -14,12 +14,13 @@ import {
   isOffice,
   isStale,
   mergeSourceId,
+  rotateFor,
   outputNameFor,
   displayName,
   requestBodyFor,
   routeFor,
 } from '../../processing';
-import { MergeError, deleteUpload, downloadBlob, mergeFiles, processFile, uploadFile } from '../../lib/api';
+import { MergeError, deleteUpload, downloadBlob, mergeFiles, mergePages, processFile, uploadFile } from '../../lib/api';
 import { formatBytes, percentChange, plural, uid, cn } from '../../lib/format';
 import { canShareFiles, mimeFor, tapHasExpired } from '../../lib/share';
 import { useFiles } from '../../hooks/useFiles';
@@ -102,6 +103,35 @@ const FileProcessor: React.FC = () => {
   const maxFileBytes = useFiles((s) => s.maxFileBytes);
   const merge = useFiles((s) => s.merge);
   const [mergeOpen, setMergeOpen] = useState(false);
+
+  // Page previews for the merge dialog, one source at a time (a Word file
+  // means a LibreOffice run on the server), in page order. A source whose
+  // processed result changes has a new id, so it is previewed afresh.
+  const previewing = useRef(false);
+  const [previewDone, setPreviewDone] = useState(0);
+  useEffect(() => {
+    if (!mergeOpen || previewing.current) return;
+    const { files: current, merge: m } = useFiles.getState();
+    const byId = new Map(current.map((f) => [f.id, f]));
+    const next = m.order
+      .map((id) => byId.get(id))
+      .find((f): f is FileItem => !!f && isMergeReady(f) && !m.previews[mergeSourceId(f)!]);
+    if (!next) return;
+    const sourceId = mergeSourceId(next)!;
+    const store = (p: SourcePreview) =>
+      useFiles.getState().setMerge((s) => ({ previews: { ...s.previews, [sourceId]: p } }));
+    previewing.current = true;
+    store({ status: 'loading' });
+    mergePages(sourceId)
+      .then(
+        (data) => store({ status: 'ready', pageCount: data.pageCount, pages: data.pages }),
+        (error) => store({ status: 'error', error: error instanceof Error ? error.message : 'No preview' })
+      )
+      .finally(() => {
+        previewing.current = false;
+        setPreviewDone((n) => n + 1);
+      });
+  }, [mergeOpen, merge.order, files, previewDone]);
   const { addToast } = useToast();
   const limiter = useRef(createLimiter(CONCURRENCY)).current;
   const officeLimiter = useRef(createLimiter(OFFICE_CONCURRENCY)).current;
@@ -369,9 +399,12 @@ const FileProcessor: React.FC = () => {
     const byId = new Map(current.map((f) => [f.id, f]));
     const sources = m.order.map((id) => byId.get(id)).filter((f): f is FileItem => !!f && isMergeReady(f));
     if (sources.length < 2) return;
-    setMerge({ status: 'running', error: undefined, failedFileId: undefined, result: undefined });
+    setMerge({ status: 'running', error: undefined, failedFileId: undefined, result: undefined, stale: false });
     try {
-      const data = await mergeFiles(sources.map((f) => mergeSourceId(f)!));
+      const data = await mergeFiles(
+        sources.map((f) => mergeSourceId(f)!),
+        sources.map((f) => rotateFor(m, f))
+      );
       useFiles.getState().setMerge({
         status: 'done',
         result: data,
@@ -458,7 +491,7 @@ const FileProcessor: React.FC = () => {
         </h1>
         <p className="mx-auto mt-3 max-w-lg text-[15px] leading-relaxed text-zinc-500 dark:text-zinc-400 app:mt-2 app:[@media(max-height:700px)]:hidden">
           Compress images, video and PDFs, turn Office documents into PDFs, or merge several
-          files into one PDF in the order you choose. Good defaults are chosen for you; every
+          files into one PDF in the order you choose, with every page the right way up. Good defaults are chosen for you; every
           setting is still one click away.
         </p>
       </div>
@@ -544,7 +577,12 @@ const FileProcessor: React.FC = () => {
                   )}
                 </AnimatePresence>
                 {summary.mergeable >= 2 && (
-                  <Button variant="secondary" size="sm" onClick={openMerge}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={openMerge}
+                    title="Put the files in order and check their pages before merging"
+                  >
                     <Layers className="h-3.5 w-3.5" />
                     Merge to PDF
                   </Button>

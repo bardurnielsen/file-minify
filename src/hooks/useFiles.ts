@@ -3,7 +3,15 @@ import { persist } from 'zustand/middleware';
 import { FileItem, MergeState, MissingTool, PhoneAccess, Tier, UpdateStatus } from '../types';
 import { MAX_FILE_BYTES } from '../processing';
 
-const EMPTY_MERGE: MergeState = { status: 'idle', order: [], excluded: [], name: 'merged.pdf' };
+const EMPTY_MERGE: MergeState = {
+  status: 'idle',
+  order: [],
+  excluded: [],
+  rotation: {},
+  pageRotation: {},
+  previews: {},
+  name: 'merged.pdf',
+};
 
 interface FileStore {
   files: FileItem[];
@@ -54,14 +62,23 @@ export const useFiles = create<FileStore>()(
       setDefaultTier: (defaultTier) => set({ defaultTier }),
       addFiles: (newFiles) => set((state) => ({ files: [...state.files, ...newFiles] })),
       removeFile: (id) =>
-        set((state) => ({
-          files: state.files.filter((f) => f.id !== id),
-          merge: {
-            ...state.merge,
-            order: state.merge.order.filter((x) => x !== id),
-            excluded: state.merge.excluded.filter((x) => x !== id),
-          },
-        })),
+        set((state) => {
+          const rotation = { ...state.merge.rotation };
+          delete rotation[id];
+          const pageRotation = { ...state.merge.pageRotation };
+          delete pageRotation[id];
+          return {
+            files: state.files.filter((f) => f.id !== id),
+            merge: {
+              ...state.merge,
+              order: state.merge.order.filter((x) => x !== id),
+              excluded: state.merge.excluded.filter((x) => x !== id),
+              rotation,
+              pageRotation,
+              stale: state.merge.stale || (state.merge.status === 'done' && state.merge.order.includes(id)),
+            },
+          };
+        }),
       updateFile: (id, updates) =>
         set((state) => ({
           files: state.files.map((f) =>

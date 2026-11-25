@@ -127,6 +127,73 @@ esac
 c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/merge" -H 'Content-Type: application/json' -d "{\"ids\":[\"$ID_fx_png\"]}")
 [ "$c" = "400" ] && { echo "PASS  merge of one file -> 400"; pass=$((pass+1)); } || { echo "FAIL  merge of one file -> $c"; fail=$((fail+1)); }
 
+# Rotation: each source's pages turn by its entry in `rotate`, one number for
+# the file or one per page. pdf-lib keeps page dictionaries in compressed
+# object streams, so look for /Rotate in the inflated streams too. Python is
+# only used for that look; without it those checks are skipped, not failed.
+PY=; for p in python3 python; do "$p" -c pass 2>/dev/null && { PY=$p; break; }; done
+rotations() { # rotations <file> -> the /Rotate values in it, e.g. "180 90"
+  "$PY" - "$(native "$1")" <<'EOF'
+import re, sys, zlib
+data = open(sys.argv[1], "rb").read()
+chunks = [data]
+for m in re.finditer(rb"stream\r?\n(.*?)endstream", data, re.S):
+    try: chunks.append(zlib.decompress(m.group(1)))
+    except Exception: pass
+print(" ".join(sorted({a.decode() for c in chunks for a in re.findall(rb"/Rotate (\d+)", c)})))
+EOF
+}
+has_rotations() { # has_rotations <label> <merge json> <angle>...
+  local label="$1" json="$2"; shift 2
+  check "$label" "$json" merge
+  local rid; rid=$(printf '%s' "$json" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+  if [ -z "$PY" ] || [ ! -s "$OUT/out_$rid" ]; then echo "SKIP  $label /Rotate check (no python)"; return; fi
+  local turns a; turns=$(rotations "$OUT/out_$rid")
+  for a in "$@"; do
+    case " $turns " in *" $a "*) ;; *) echo "FAIL  $label carries /Rotate $a -> '${turns}'"; fail=$((fail+1)); return ;; esac
+  done
+  echo "PASS  $label carries /Rotate -> $turns"; pass=$((pass+1))
+}
+has_rotations "merge with rotate [90,180]" \
+  "$(curl -s -X POST "$API/merge" -H 'Content-Type: application/json' -d "{\"ids\":[\"$ID_fx_png\",\"$ID_fx_pdf\"],\"rotate\":[90,180]}")" 90 180
+has_rotations "merge with per-page rotate [0,[90,270]]" \
+  "$(curl -s -X POST "$API/merge" -H 'Content-Type: application/json' -d "{\"ids\":[\"$ID_fx_png\",\"$ID_fx_pdf\"],\"rotate\":[0,[90,270]]}")" 90 270
+for bad in '[45,0]' '[90]' '"90"' '[0,[90]]' '[0,[90,45]]'; do
+  c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/merge" -H 'Content-Type: application/json' -d "{\"ids\":[\"$ID_fx_png\",\"$ID_fx_pdf\"],\"rotate\":$bad}")
+  [ "$c" = "400" ] && { echo "PASS  merge rotate $bad -> 400"; pass=$((pass+1)); } || { echo "FAIL  merge rotate $bad -> $c"; fail=$((fail+1)); }
+done
+
+# Page previews for the merge dialog: count, sizes and a PNG per page.
+pages_of() { curl -s -X POST "$API/merge/pages" -H 'Content-Type: application/json' -d "{\"id\":\"$1\"}" -w ' %{http_code}'; }
+for f in fx_pdf fx_docx fx_png; do
+  eval "id=\$ID_$f"; r=$(pages_of "$id")
+  n=$(printf '%s' "$r" | sed -n 's/.*"pageCount":\([0-9]*\).*/\1/p')
+  thumbs=$(printf '%s' "$r" | grep -o '"thumb":"data:image/png;base64,' | wc -l)
+  case "$r" in
+    *" 200") [ "${n:-0}" -ge 1 ] && [ "$thumbs" -eq "$n" ] \
+      && { echo "PASS  pages of $f -> $n pages, $thumbs thumbnails"; pass=$((pass+1)); } \
+      || { echo "FAIL  pages of $f -> ${n:-?} pages, $thumbs thumbnails"; fail=$((fail+1)); } ;;
+    *) echo "FAIL  pages of $f -> $(printf '%s' "$r" | tail -c 160)"; fail=$((fail+1)) ;;
+  esac
+done
+r=$(pages_of "$ID_fx_pdf")
+case "$r" in *'"width":1200,"height":800'*) echo "PASS  pages report the page size"; pass=$((pass+1)) ;;
+  *) echo "FAIL  pages report the page size -> $(printf '%s' "$r" | grep -o '"width":[0-9]*,"height":[0-9]*' | head -1)"; fail=$((fail+1)) ;; esac
+for bad in "$ID_fx_mp4:400" "..%2Fetc%2Fpasswd:400" "nope.pdf:404"; do
+  c=$(pages_of "${bad%:*}" | awk '{print $NF}')
+  [ "$c" = "${bad##*:}" ] && { echo "PASS  pages of ${bad%:*} -> $c"; pass=$((pass+1)); } || { echo "FAIL  pages of ${bad%:*} -> $c"; fail=$((fail+1)); }
+done
+r=$(curl -s -X POST "$API/merge" -H 'Content-Type: application/json' -d "{\"ids\":[\"$ID_fx_pdf\",\"$ID_fx_docx\"]}")
+check "merge reuses the previewed docx" "$r" merge
+# One page large, for when a thumbnail is too small to tell.
+r=$(curl -s -X POST "$API/merge/page" -H 'Content-Type: application/json' -d "{\"id\":\"$ID_fx_pdf\",\"page\":2}" -w ' %{http_code}')
+case "$r" in *'"image":"data:image/jpeg;base64,'*" 200") echo "PASS  large page 2 of fx_pdf -> $(( $(printf '%s' "$r" | wc -c) / 1024 )) KB"; pass=$((pass+1)) ;;
+  *) echo "FAIL  large page -> $(printf '%s' "$r" | tail -c 160)"; fail=$((fail+1)) ;; esac
+for bad in 0 3 '"1"' 1.5; do
+  c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/merge/page" -H 'Content-Type: application/json' -d "{\"id\":\"$ID_fx_pdf\",\"page\":$bad}")
+  [ "$c" = "400" ] && { echo "PASS  large page $bad -> 400"; pass=$((pass+1)); } || { echo "FAIL  large page $bad -> $c"; fail=$((fail+1)); }
+done
+
 echo; echo "=== SECURITY REGRESSIONS ==="
 c=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/compression/$ID_fx_mp4" -H 'Content-Type: application/json' -d '{"format":"mp4$(touch /app/PWNED_FMT)"}')
 [ "$c" = "400" ] && { echo "PASS  format injection -> 400"; pass=$((pass+1)); } || { echo "FAIL  format injection -> $c"; fail=$((fail+1)); }

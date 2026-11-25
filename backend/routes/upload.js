@@ -156,8 +156,9 @@ router.delete('/:id', (req, res) => {
       });
     }
     
-    // Delete file
+    // Delete file, and the merge preview made from it (merge.js), if any.
     fs.unlinkSync(filePath);
+    fs.rm(path.join(TEMP_DIR, `preview-${id}`), { recursive: true, force: true }, () => {});
     
     return res.status(200).json({
       success: true,
